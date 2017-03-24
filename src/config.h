@@ -1,0 +1,12 @@
+#define LED_GPIO GPIOC
+#define LED_PIN  GPIO8
+
+
+#define DEBUG_GPIO      GPIOB
+#define DEBUG_GPIO_AF   GPIO_AF0
+#define DEBUG_UART      USART1
+#define DEBUG_UART_RCC  RCC_USART1
+#define DEBUG_TX_PIN    GPIO6
+
+#define NVIC_PRIO_SYSTICK    1*64
+
