@@ -118,7 +118,7 @@ static void composite_video_init_comparator_interrupt(void) {
     debug("cvideo: comparator init ISR\n");
 
     // set up exti source
-    exti_set_trigger(COMPOSITE_VIDEO_COMP_EXTI_SOURCE_LINE, EXTI_TRIGGER_RISING);
+    exti_set_trigger(COMPOSITE_VIDEO_COMP_EXTI_SOURCE_LINE, EXTI_TRIGGER_FALLING);
     exti_enable_request(COMPOSITE_VIDEO_COMP_EXTI_SOURCE_LINE);
 
     // enable irq
@@ -129,7 +129,9 @@ static void composite_video_init_comparator_interrupt(void) {
 void ADC_COMP_IRQHandler(void) {
     if (exti_get_flag_status(COMPOSITE_VIDEO_COMP_EXTI_SOURCE_LINE) != 0) {
         exti_reset_request(COMPOSITE_VIDEO_COMP_EXTI_SOURCE_LINE);
-        led_toggle();
+        led_on();
+        delay_us(10);
+        led_off();
     }
 }
 
