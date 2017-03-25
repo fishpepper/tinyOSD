@@ -274,6 +274,34 @@ void debug_put_fixed2(uint16_t c) {
     debug_putc('0' + (uint8_t)c);
 }
 
+void debug_put_fixed1p3(uint16_t c) {
+    uint8_t tmp;
+    tmp = 0;
+    while (c >= 1000L) {
+        c -= 1000L;
+        tmp++;
+    }
+    debug_putc('0' + tmp);
+
+    debug_putc('.');
+
+    tmp = 0;
+    while (c >= 100) {
+        c -= 100;
+        tmp++;
+    }
+    debug_putc('0' + tmp);
+
+    tmp = 0;
+    while (c >= 10) {
+        c -= 10;
+        tmp++;
+    }
+    debug_putc('0' + tmp);
+
+    debug_putc('0' + (uint8_t)c);
+}
+
 void debug_put_newline(void) {
     debug_putc('\n');
 }
