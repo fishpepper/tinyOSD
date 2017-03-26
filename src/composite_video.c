@@ -22,6 +22,7 @@
 #include "macros.h"
 #include "debug.h"
 #include "delay.h"
+#include "clocksource.h"
 #include "led.h"
 
 #include <libopencm3/stm32/rcc.h>
@@ -29,6 +30,7 @@
 #include <libopencm3/stm32/comparator.h>
 #include <libopencm3/stm32/dac.h>
 #include <libopencm3/stm32/exti.h>
+#include <libopencm3/stm32/timer.h>
 #include <libopencm3/stm32/syscfg.h>
 
 #include <libopencm3/cm3/nvic.h>
@@ -36,17 +38,23 @@
 
 static void composite_video_init_rcc(void);
 static void composite_video_init_gpio(void);
+static void composite_video_init_timer(void);
 static void composite_video_init_comparator(void);
 static void composite_video_init_comparator_interrupt(void);
 static void composite_video_init_dac(void);
 static void composite_video_set_dac_value_mv(uint16_t target);
 static void composite_video_set_dac_value_raw(uint16_t target);
 
+volatile uint16_t composite_video_sync_pulse_start_counter;
+volatile uint16_t composite_video_dbg;
+
 void composite_video_init(void) {
     uint16_t tmp = 0;
 
     composite_video_init_rcc();
     composite_video_init_gpio();
+
+    composite_video_init_timer();
 
     composite_video_init_comparator();
     composite_video_init_comparator_interrupt();
@@ -58,8 +66,13 @@ void composite_video_init(void) {
     while (1) {
         tmp += 1;
         if (tmp >= 300) tmp = 0;
-        //composite_video_set_dac_value_mv(tmp);
-        delay_ms(1);
+        // composite_video_set_dac_value_mv(tmp);
+        if (1) { //composite_video_dbg > 250) {
+            debug_put_uint16(composite_video_dbg);
+            debug_put_newline();
+
+
+        }
     /*if (EXTI_EMR){
             debug("EXIT: 0x");
             debug_put_hex32(EXTI_EMR);
@@ -76,6 +89,9 @@ static void composite_video_init_rcc(void) {
 
     // for EXTI
     rcc_periph_clock_enable(RCC_SYSCFG_COMP);
+
+    // timer1 clock
+    rcc_periph_clock_enable(RCC_TIM1);
 
     // peripheral clocks enable
     rcc_periph_clock_enable(GPIO_RCC(COMPOSITE_VIDEO_GPIO));
@@ -102,10 +118,10 @@ static void composite_video_init_comparator(void) {
     comp_select_input(COMP1, COMP_CSR_INSEL_INM4);
 
     // no output
-    comp_select_output(COMP1, COMP_CSR_OUTSEL_NONE);
+    comp_select_output(COMP1, COMP_CSR_OUTSEL_TIM1_IC1);
 
     // hysteresis
-    comp_select_hyst(COMP1, COMP_CSR_HYST_NO);
+    comp_select_hyst(COMP1, COMP_CSR_HYST_MED);
 
     // speed --> FAST!
     comp_select_speed(COMP1, COMP_CSR_SPEED_HIGH);
@@ -114,11 +130,51 @@ static void composite_video_init_comparator(void) {
     comp_enable(COMP1);
 }
 
+static void composite_video_init_timer(void) {
+    uint16_t prescaler;
+
+    // reset TIMx peripheral
+    timer_reset(TIM1);
+
+    // Set the timers global mode to:
+    // - use no divider
+    // - alignment edge
+    // - count direction up
+    timer_set_mode(TIM1,
+                   TIM_CR1_CKD_CK_INT,
+                   TIM_CR1_CMS_EDGE,
+                   TIM_CR1_DIR_UP);
+
+    // input compare trigger
+    timer_ic_set_input(TIM1, TIM_IC1, TIM_IC_IN_TI1);
+    timer_ic_set_polarity(TIM1, TIM_IC1, TIM_IC_BOTH);
+    timer_ic_set_prescaler(TIM1, TIM_IC1, TIM_IC_PSC_OFF);
+    timer_ic_set_filter(TIM1, TIM_IC1, TIM_IC_OFF);
+    timer_ic_enable(TIM1, TIM_IC1);
+
+    // line frequency
+    // NTSC (color) 15734 Hz = 63.56 us per line
+    // PAL          15625 Hz = 64.00 us per line (54 us line content)
+    // -> set up timer to overflow every 100us (= 0.1ms) = 10kHz
+    prescaler = 1;
+    debug("cvideo: tim1 presc ");
+    debug_put_uint16(prescaler);
+    timer_set_prescaler(TIM1, prescaler - 1);
+    timer_set_repetition_counter(TIM1, 0);
+
+    timer_enable_preload(TIM1);
+    timer_continuous_mode(TIM1);
+    timer_set_period(TIM1, 0xFFFF);
+
+    // start timer
+    timer_enable_counter(TIM1);
+}
+
 static void composite_video_init_comparator_interrupt(void) {
     debug("cvideo: comparator init ISR\n");
 
     // set up exti source
-    exti_set_trigger(COMPOSITE_VIDEO_COMP_EXTI_SOURCE_LINE, EXTI_TRIGGER_FALLING);
+    exti_set_trigger(COMPOSITE_VIDEO_COMP_EXTI_SOURCE_LINE, EXTI_TRIGGER_BOTH);
     exti_enable_request(COMPOSITE_VIDEO_COMP_EXTI_SOURCE_LINE);
 
     // enable irq
@@ -127,12 +183,41 @@ static void composite_video_init_comparator_interrupt(void) {
 }
 
 void ADC_COMP_IRQHandler(void) {
+    // well, this irq is only called on comp interrupts -> skip checking...
+    // if (exti_get_flag_status(COMPOSITE_VIDEO_COMP_EXTI_SOURCE_LINE) != 0) {
+    // clear flag
+    exti_reset_request(COMPOSITE_VIDEO_COMP_EXTI_SOURCE_LINE);
+
+    //debug_put_hex32(COMP_CSR(COMP1) & (1<<14));debug_put_newline();
+    // we trigger on both edges
+    // check if this was rising or falling edge:
+    if (!(COMP_CSR(COMP1) & (1<<14))) {
+        // falling edge -> start of sync pulse
+        // store counter value on comparator match
+        composite_video_sync_pulse_start_counter = TIM_CCR1(TIM1);
+    } else  {
+        // rising edge, end ot snyc pulse
+        // fetch counter on comparator match:
+        uint16_t sync_pulse_end_counter = TIM_CCR1(TIM1);
+        // calc len of pulse:
+        uint16_t pulse_len = sync_pulse_end_counter - composite_video_sync_pulse_start_counter;
+        composite_video_dbg = pulse_len;
+    }
+#if 0
+    /*1) set to both edges, input captuure timerx set
+       ISR:falling - store timer compare val
+    2) ISR:rising  - store timer comp val
+      -> calc comp value for line start + enable INT for comp match
+    see http://www.st.com/content/ccc/resource/technical/document/application_note/c1/8f/3a/91/68/09/44/a0/DM00055171.pdf/files/DM00055171.pdf/jcr:content/translations/en.DM00055171.pdf
+
     if (exti_get_flag_status(COMPOSITE_VIDEO_COMP_EXTI_SOURCE_LINE) != 0) {
-        exti_reset_request(COMPOSITE_VIDEO_COMP_EXTI_SOURCE_LINE);
         led_on();
         delay_us(10);
         led_off();
-    }
+    }*/
+    #endif
+
+    led_toggle();
 }
 
 static void composite_video_init_dac(void) {
