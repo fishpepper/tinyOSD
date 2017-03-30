@@ -191,11 +191,12 @@ void ADC_COMP_IRQHandler(void) {
 
     // calc duration
     uint16_t current_compare_value = TIM_CCR1(TIM1);
-    uint16_t pulse_len = video_sync_last_compare_value - current_compare_value;
+    uint16_t pulse_len = current_compare_value - video_sync_last_compare_value;
+video_dbg = pulse_len;
 
     // we trigger on both edges
     // check if this was rising or falling edge:
-    if (!(COMP_CSR(COMP1) & (1<<14))) {
+    if ((COMP_CSR(COMP1) & (1<<14))) {
         // falling edge -> this was measuring the field length
         if ((pulse_len > VIDEO_SYNC_VSYNC_MIN) && (pulse_len < VIDEO_SYNC_VSYNC_MAX)) {
             // this was the last half line -> hsync!
@@ -203,14 +204,15 @@ void ADC_COMP_IRQHandler(void) {
         }
     } else  {
         // rising edge -> this was measuring the a sync part
-        if (pulse_len < VIDEO_SYNC_SHORT_MAX) {
+        if (pulse_len < _US_TO_CLOCKS(25)) { //VIDEO_SYNC_SHORT_MAX) {
             // all short sync pulses are shortsyncs
 
             // new (half)frame -> init line counter
             video_line = video_field;
-        } else if (pulse_len < VIDEO_SYNC_HSYNC_MAX) {
+        } else if (pulse_len < _US_TO_CLOCKS(28)) { // VIDEO_SYNC_HSYNC_MAX) {
             // this is longer than a short sync and not a broad sync
 
+            led_toggle();
             // increment video field
             video_line += 2;
 
@@ -222,8 +224,8 @@ void ADC_COMP_IRQHandler(void) {
         }
     }
 
-
-    led_toggle();
+    // store current value for period measurements
+   video_sync_last_compare_value = current_compare_value;
 }
 
 static void video_init_dac(void) {
