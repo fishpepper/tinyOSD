@@ -23,7 +23,7 @@
 #include "led.h"
 #include "clocksource.h"
 #include "debug.h"
-#include "composite_video.h"
+#include "video.h"
 
 #include <stdlib.h>
 #include <libopencm3/cm3/nvic.h>
@@ -40,7 +40,7 @@ int main(void) {
     led_init();
 
     debug_init();
-    composite_video_init();
+    video_init();
 
     while (1) {
         debug("main: tick\n");

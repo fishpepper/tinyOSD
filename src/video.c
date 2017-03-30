@@ -17,7 +17,7 @@
     author: fishpepper <AT> gmail.com
 */
 
-#include "composite_video.h"
+#include "video.h"
 #include "config.h"
 #include "macros.h"
 #include "debug.h"
@@ -36,42 +36,42 @@
 #include <libopencm3/cm3/nvic.h>
 #include <libopencmsis/core_cm3.h>
 
-static void composite_video_init_rcc(void);
-static void composite_video_init_gpio(void);
-static void composite_video_init_timer(void);
-static void composite_video_init_comparator(void);
-static void composite_video_init_comparator_interrupt(void);
-static void composite_video_init_dac(void);
-static void composite_video_set_dac_value_mv(uint16_t target);
-static void composite_video_set_dac_value_raw(uint16_t target);
+static void video_init_rcc(void);
+static void video_init_gpio(void);
+static void video_init_timer(void);
+static void video_init_comparator(void);
+static void video_init_comparator_interrupt(void);
+static void video_init_dac(void);
+static void video_set_dac_value_mv(uint16_t target);
+static void video_set_dac_value_raw(uint16_t target);
 
-volatile uint16_t composite_video_sync_pulse_start_counter;
-volatile uint16_t composite_video_dbg;
+volatile uint32_t video_dbg;
+volatile uint32_t video_line;
+volatile uint32_t video_field;
+volatile uint16_t video_sync_last_compare_value;
 
-void composite_video_init(void) {
-    uint16_t tmp = 0;
+void video_init(void) {
+    // uint16_t tmp = 0;
 
-    composite_video_init_rcc();
-    composite_video_init_gpio();
+    video_init_rcc();
+    video_init_gpio();
 
-    composite_video_init_timer();
+    video_init_timer();
 
-    composite_video_init_comparator();
-    composite_video_init_comparator_interrupt();
+    video_init_comparator();
+    video_init_comparator_interrupt();
 
-    composite_video_init_dac();
+    video_init_dac();
 
 
-    composite_video_set_dac_value_mv(100);
+    video_set_dac_value_mv(100);
     while (1) {
-        tmp += 1;
-        if (tmp >= 300) tmp = 0;
-        // composite_video_set_dac_value_mv(tmp);
-        if (1) { //composite_video_dbg > 250) {
-            debug_put_uint16(composite_video_dbg);
+        // video_set_dac_value_mv(tmp);
+
+        if (1) {  // video_dbg > 250) {
+            debug_put_uint16(video_dbg);
             debug_put_newline();
-
-
+            // video_dbg = 0;
         }
     /*if (EXTI_EMR){
             debug("EXIT: 0x");
@@ -83,7 +83,7 @@ void composite_video_init(void) {
     }
 }
 
-static void composite_video_init_rcc(void) {
+static void video_init_rcc(void) {
     // DAC clock
     rcc_periph_clock_enable(RCC_DAC);
 
@@ -94,19 +94,19 @@ static void composite_video_init_rcc(void) {
     rcc_periph_clock_enable(RCC_TIM1);
 
     // peripheral clocks enable
-    rcc_periph_clock_enable(GPIO_RCC(COMPOSITE_VIDEO_GPIO));
+    rcc_periph_clock_enable(GPIO_RCC(VIDEO_GPIO));
 }
 
-static void composite_video_init_gpio(void) {
+static void video_init_gpio(void) {
     // set video input pin as input
-    gpio_mode_setup(COMPOSITE_VIDEO_GPIO, GPIO_MODE_ANALOG, GPIO_PUPD_NONE, COMPOSITE_VIDEO_INPUT_PIN);
+    gpio_mode_setup(VIDEO_GPIO, GPIO_MODE_ANALOG, GPIO_PUPD_NONE, VIDEO_INPUT_PIN);
 
     // set dac to output
-    gpio_mode_setup(COMPOSITE_VIDEO_GPIO, GPIO_MODE_ANALOG, GPIO_PUPD_NONE, COMPOSITE_VIDEO_DAC_OUT_PIN);
-    gpio_set_output_options(COMPOSITE_VIDEO_GPIO, GPIO_OTYPE_PP, GPIO_OSPEED_50MHZ, COMPOSITE_VIDEO_DAC_OUT_PIN);
+    gpio_mode_setup(VIDEO_GPIO, GPIO_MODE_ANALOG, GPIO_PUPD_NONE, VIDEO_DAC_OUT_PIN);
+    gpio_set_output_options(VIDEO_GPIO, GPIO_OTYPE_PP, GPIO_OSPEED_50MHZ, VIDEO_DAC_OUT_PIN);
 }
 
-static void composite_video_init_comparator(void) {
+static void video_init_comparator(void) {
     debug("cvideo: comparator init\n");
 
     // start disabled
@@ -130,7 +130,7 @@ static void composite_video_init_comparator(void) {
     comp_enable(COMP1);
 }
 
-static void composite_video_init_timer(void) {
+static void video_init_timer(void) {
     uint16_t prescaler;
 
     // reset TIMx peripheral
@@ -170,63 +170,69 @@ static void composite_video_init_timer(void) {
     timer_enable_counter(TIM1);
 }
 
-static void composite_video_init_comparator_interrupt(void) {
+static void video_init_comparator_interrupt(void) {
     debug("cvideo: comparator init ISR\n");
 
     // set up exti source
-    exti_set_trigger(COMPOSITE_VIDEO_COMP_EXTI_SOURCE_LINE, EXTI_TRIGGER_BOTH);
-    exti_enable_request(COMPOSITE_VIDEO_COMP_EXTI_SOURCE_LINE);
+    exti_set_trigger(VIDEO_COMP_EXTI_SOURCE_LINE, EXTI_TRIGGER_BOTH);
+    exti_enable_request(VIDEO_COMP_EXTI_SOURCE_LINE);
 
     // enable irq
-    nvic_enable_irq(COMPOSITE_VIDEO_COMP_EXTI_IRQN);
-    nvic_set_priority(COMPOSITE_VIDEO_COMP_EXTI_IRQN, NVIC_PRIO_COMPARATOR);
+    nvic_enable_irq(VIDEO_COMP_EXTI_IRQN);
+    nvic_set_priority(VIDEO_COMP_EXTI_IRQN, NVIC_PRIO_COMPARATOR);
 }
 
 void ADC_COMP_IRQHandler(void) {
     // well, this irq is only called on comp interrupts -> skip checking...
-    // if (exti_get_flag_status(COMPOSITE_VIDEO_COMP_EXTI_SOURCE_LINE) != 0) {
+    // if (exti_get_flag_status(VIDEO_COMP_EXTI_SOURCE_LINE) != 0) {
     // clear flag
-    exti_reset_request(COMPOSITE_VIDEO_COMP_EXTI_SOURCE_LINE);
+    // exti_reset_request(VIDEO_COMP_EXTI_SOURCE_LINE);
+    EXTI_PR = VIDEO_COMP_EXTI_SOURCE_LINE;  // clear flag
 
-    //debug_put_hex32(COMP_CSR(COMP1) & (1<<14));debug_put_newline();
+    // calc duration
+    uint16_t current_compare_value = TIM_CCR1(TIM1);
+    uint16_t pulse_len = video_sync_last_compare_value - current_compare_value;
+
     // we trigger on both edges
     // check if this was rising or falling edge:
     if (!(COMP_CSR(COMP1) & (1<<14))) {
-        // falling edge -> start of sync pulse
-        // store counter value on comparator match
-        composite_video_sync_pulse_start_counter = TIM_CCR1(TIM1);
+        // falling edge -> this was measuring the field length
+        if ((pulse_len > VIDEO_SYNC_VSYNC_MIN) && (pulse_len < VIDEO_SYNC_VSYNC_MAX)) {
+            // this was the last half line -> hsync!
+            video_field = VIDEO_FIRST_FIELD;
+        }
     } else  {
-        // rising edge, end ot snyc pulse
-        // fetch counter on comparator match:
-        uint16_t sync_pulse_end_counter = TIM_CCR1(TIM1);
-        // calc len of pulse:
-        uint16_t pulse_len = sync_pulse_end_counter - composite_video_sync_pulse_start_counter;
-        composite_video_dbg = pulse_len;
-    }
-#if 0
-    /*1) set to both edges, input captuure timerx set
-       ISR:falling - store timer compare val
-    2) ISR:rising  - store timer comp val
-      -> calc comp value for line start + enable INT for comp match
-    see http://www.st.com/content/ccc/resource/technical/document/application_note/c1/8f/3a/91/68/09/44/a0/DM00055171.pdf/files/DM00055171.pdf/jcr:content/translations/en.DM00055171.pdf
+        // rising edge -> this was measuring the a sync part
+        if (pulse_len < VIDEO_SYNC_SHORT_MAX) {
+            // all short sync pulses are shortsyncs
 
-    if (exti_get_flag_status(COMPOSITE_VIDEO_COMP_EXTI_SOURCE_LINE) != 0) {
-        led_on();
-        delay_us(10);
-        led_off();
-    }*/
-    #endif
+            // new (half)frame -> init line counter
+            video_line = video_field;
+        } else if (pulse_len < VIDEO_SYNC_HSYNC_MAX) {
+            // this is longer than a short sync and not a broad sync
+
+            // increment video field
+            video_line += 2;
+
+            // prepare for the next field
+            video_field = 1 - VIDEO_FIRST_FIELD;
+        } else {
+            // this is a broad sync
+            // prepare video transmission
+        }
+    }
+
 
     led_toggle();
 }
 
-static void composite_video_init_dac(void) {
+static void video_init_dac(void) {
     // start with disabled dac
     dac_disable(CHANNEL_1);
     dac_disable_waveform_generation(CHANNEL_1);
 
     // set default value and enable output
-    composite_video_set_dac_value_mv(0);
+    video_set_dac_value_mv(0);
     dac_enable(CHANNEL_1);
 
     // software update trigher
@@ -235,17 +241,17 @@ static void composite_video_init_dac(void) {
 
 
 // set dac to a given voltage level
-static void composite_video_set_dac_value_mv(uint16_t target) {
+static void video_set_dac_value_mv(uint16_t target) {
     uint32_t tmp = target;
     debug("cvideo: dac set ");
     debug_put_fixed1p3(target);
     debug_put_newline();
 
-    tmp = (tmp * 0x0FFF) / (COMPOSITE_VIDEO_DAC_VCC * 1000);
-    composite_video_set_dac_value_raw(tmp);
+    tmp = (tmp * 0x0FFF) / (VIDEO_DAC_VCC * 1000);
+    video_set_dac_value_raw(tmp);
 }
 
-static void composite_video_set_dac_value_raw(uint16_t target) {
+static void video_set_dac_value_raw(uint16_t target) {
     debug("cvideo: dac set raw 0x");
     debug_put_hex16(target);
     debug_put_newline();

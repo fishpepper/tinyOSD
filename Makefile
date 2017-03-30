@@ -162,7 +162,7 @@ $(OBJECT_DIR)/%.o: $(SOURCE_DIR)/%.c libopencm3 obj_dir
 
 clean:
 	@#printf "  CLEAN\n"
-	$(Q)$(RM) $(OBJ_DIR)/*.o $(OBJ_DIR)/*.d $(BIN_DIR)/*.elf $(BIN_DIR)*.bin $(BIN_DIR)*.hex $(BIN_DIR)/*.srec $(BIN_DIR)/*.lst $(BIN_DIR)/*.map generated.* ${OBJS} ${OBJS:%.o:%.d}
+	$(Q)$(RM) $(OBJECT_DIR)/*.o $(OBJECT_DIR)/*.d $(BIN_DIR)/*.elf $(BIN_DIR)*.bin $(BIN_DIR)*.hex $(BIN_DIR)/*.srec $(BIN_DIR)/*.lst $(BIN_DIR)/*.map generated.* ${OBJS} ${OBJS:%.o:%.d}
 
 stylecheck: $(HEADER_FILES) $(SOURCE_FILES_FOUND)
 	@./stylecheck/cpplint.py --filter=-build/include,-build/storage_class,-readability/casting,-runtime/arrays --extensions="h,c" --root=src --linelength=120 $(HEADER_FILES) $(SOURCE_FILES_FOUND) || true

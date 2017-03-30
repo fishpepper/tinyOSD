@@ -706,5 +706,6 @@ src/main.c
 src/main.h
 src/timeout.c
 src/timeout.h
-src/composite_video.h
 src/composite_video.c
+src/video.c
+src/video.h
