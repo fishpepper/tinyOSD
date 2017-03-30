@@ -42,6 +42,7 @@ void video_init(void);
 #define VIDEO_SYNC_HI_BROAD     (VIDEO_SYNC_HSYNC)
 #define VIDEO_SYNC_HI_VSYNC     ((VIDEO_LINE_LEN / 2.0) - VIDEO_SYNC_HSYNC)
 #define VIDEO_SYNC_HI_SHORT     ((VIDEO_LINE_LEN / 2.0) - VIDEO_SYNC_SHORT)
+#define VIDEO_SYNC_HI_DATA      (VIDEO_LINE_LEN)
 //
 // -> valid vsync = .... (1)---[xxx(2)xxx]---(3)------(4)
 //
@@ -53,17 +54,19 @@ void video_init(void);
 // (2) [LO] HSYNC     : t ~ 4.7us
 // (3) [LO] BROAD     : t ~ (VIDEO_LINE_LEN / 2) - VIDEO_SYNC_HSYNC
 //
-#define VIDEO_SYNC_LO_BROAD       (VIDEO_LINE_LEN / 2.0) - VIDEO_SYNC_HSYNC
 //
 // short sync =  (1)xxx]---(2)------(3)
 //
 #define VIDEO_SYNC_SHORT_MIN    _US_TO_CLOCKS(0)
-#define VIDEO_SYNC_SHORT_MAX    _US_TO_CLOCKS(VIDEO_SYNC_SHORT + (VIDEO_SYNC_HSYNC - VIDEO_SYNC_SHORT)/2.0)
+#define VIDEO_SYNC_SHORT_MAX    _US_TO_CLOCKS(VIDEO_SYNC_SHORT +  (VIDEO_SYNC_HSYNC - VIDEO_SYNC_SHORT)/2.0)
 //
 // hsync      =  (1)---[xxx(2)xxx]---(3)
 //
 #define VIDEO_SYNC_HSYNC_MIN    _US_TO_CLOCKS(VIDEO_SYNC_HSYNC - (VIDEO_SYNC_HSYNC - VIDEO_SYNC_SHORT)/2.0)
 #define VIDEO_SYNC_HSYNC_MAX    _US_TO_CLOCKS(VIDEO_SYNC_HSYNC + (VIDEO_SYNC_LO_BROAD - VIDEO_SYNC_HSYNC)/2.0)
-
+//
+// broad      = (1)------(2)---[xxx(3)]
+//
+#define VIDEO_SYNC_LO_BROAD       (VIDEO_LINE_LEN / 2.0) - VIDEO_SYNC_HSYNC
 
 #endif  // VIDEO_H_

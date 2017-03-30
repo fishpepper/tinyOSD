@@ -20,4 +20,7 @@
 #define VIDEO_COMP_EXTI_SOURCE_LINE    EXTI21
 #define VIDEO_COMP_EXTI_IRQN           NVIC_ADC_COMP_IRQ
 
+#define VIDEO_SPI_WHITE           SPI1
+#define VIDEO_SPI_WHITE_RCC       RCC_SPI1
+
 

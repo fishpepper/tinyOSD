@@ -29,6 +29,7 @@
 #include <libopencm3/stm32/gpio.h>
 #include <libopencm3/stm32/comparator.h>
 #include <libopencm3/stm32/dac.h>
+#include <libopencm3/stm32/spi.h>
 #include <libopencm3/stm32/exti.h>
 #include <libopencm3/stm32/timer.h>
 #include <libopencm3/stm32/syscfg.h>
@@ -42,8 +43,11 @@ static void video_init_timer(void);
 static void video_init_comparator(void);
 static void video_init_comparator_interrupt(void);
 static void video_init_dac(void);
+static void video_init_spi(void);
 static void video_set_dac_value_mv(uint16_t target);
 static void video_set_dac_value_raw(uint16_t target);
+
+volatile uint8_t video_buffer[2][100];
 
 volatile uint32_t video_dbg;
 volatile uint32_t video_line;
@@ -63,13 +67,17 @@ void video_init(void) {
 
     video_init_dac();
 
+    video_init_spi();
 
     video_set_dac_value_mv(100);
     while (1) {
         // video_set_dac_value_mv(tmp);
 
         if (1) {  // video_dbg > 250) {
-            debug_put_uint16(video_dbg);
+            // debug_put_uint16(((VIDEO_SYNC_VSYNC_MIN)));debug(" to "); debug_put_uint16(VIDEO_SYNC_VSYNC_MAX); debug("  ----  ");
+            // debug_put_uint16((_US_TO_CLOCKS(15)));debug(" to "); debug_put_uint16(_US_TO_CLOCKS(29)); debug("\n");
+            // debug_put_uint16(1000*(VIDEO_SYNC_HI_SHORT - VIDEO_SYNC_HI_VSYNC)/2.0); debug(" ");
+            debug_put_uint16(video_line);
             debug_put_newline();
             // video_dbg = 0;
         }
@@ -81,6 +89,43 @@ void video_init(void) {
     }*/
             //
     }
+}
+
+static void video_init_spi(void) {
+    // SPI NVIC
+    // nvic_set_priority(NVIC_SPI2_IRQ, 3);
+    // nvic_enable_irq(NVIC_SPI2_IRQ);
+
+    // clean start
+    spi_reset(VIDEO_SPI_WHITE);
+
+    // set up spi
+    // - master mode
+    // - baud prescaler = apb_clk/2 = 24/2 = 12MHz!
+    // - CPOL low
+    // - CPHA 1
+    // - 8 bit crc (?)
+    // - MSB first
+    spi_init_master(VIDEO_SPI_WHITE,
+                    SPI_CR1_BAUDRATE_FPCLK_DIV_2,
+                    SPI_CR1_CPOL_CLK_TO_0_WHEN_IDLE,
+                    SPI_CR1_CPHA_CLK_TRANSITION_1,
+                    SPI_CR1_CRCL_16BIT,
+                    SPI_CR1_MSBFIRST);
+
+    // set NSS to software
+    // NOTE: setting NSS high is important! even when controling it on our
+    //       own. otherwise spi will not send any data!
+    spi_enable_software_slave_management(VIDEO_SPI_WHITE);
+    spi_set_nss_high(VIDEO_SPI_WHITE);
+
+    // Enable SPI periph
+    spi_enable(VIDEO_SPI_WHITE);
+
+
+
+    // set fifo to quarter full(=1 byte)
+    spi_fifo_reception_threshold_16bit(VIDEO_SPI_WHITE);
 }
 
 static void video_init_rcc(void) {
@@ -95,6 +140,9 @@ static void video_init_rcc(void) {
 
     // peripheral clocks enable
     rcc_periph_clock_enable(GPIO_RCC(VIDEO_GPIO));
+
+    // spi
+    rcc_periph_clock_enable(VIDEO_SPI_WHITE_RCC);
 }
 
 static void video_init_gpio(void) {
@@ -196,23 +244,23 @@ video_dbg = pulse_len;
 
     // we trigger on both edges
     // check if this was rising or falling edge:
-    if ((COMP_CSR(COMP1) & (1<<14))) {
+    if (!(COMP_CSR(COMP1) & (1<<14))) {
         // falling edge -> this was measuring the field length
         if ((pulse_len > VIDEO_SYNC_VSYNC_MIN) && (pulse_len < VIDEO_SYNC_VSYNC_MAX)) {
             // this was the last half line -> hsync!
             video_field = VIDEO_FIRST_FIELD;
+            led_toggle();
         }
     } else  {
         // rising edge -> this was measuring the a sync part
-        if (pulse_len < _US_TO_CLOCKS(25)) { //VIDEO_SYNC_SHORT_MAX) {
+        if (pulse_len < VIDEO_SYNC_SHORT_MAX) {
             // all short sync pulses are shortsyncs
-
             // new (half)frame -> init line counter
             video_line = video_field;
-        } else if (pulse_len < _US_TO_CLOCKS(28)) { // VIDEO_SYNC_HSYNC_MAX) {
+
+        } else if (pulse_len < VIDEO_SYNC_HSYNC_MAX) {
             // this is longer than a short sync and not a broad sync
 
-            led_toggle();
             // increment video field
             video_line += 2;
 
