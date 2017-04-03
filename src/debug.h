@@ -36,4 +36,6 @@ void debug_put_newline(void);
 void debug_put_fixed2(uint16_t c);
 void debug_put_fixed1p3(uint16_t c);
 
+#define debug_function_call() { debug(__FILE__); debug(": "); debug((char*)__FUNCTION__); debug("()\n"); }
+
 #endif  // DEBUG_H_

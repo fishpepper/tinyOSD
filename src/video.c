@@ -30,11 +30,14 @@
 #include <libopencm3/stm32/comparator.h>
 #include <libopencm3/stm32/dac.h>
 #include <libopencm3/stm32/spi.h>
+#include <libopencm3/stm32/dma.h>
 #include <libopencm3/stm32/exti.h>
 #include <libopencm3/stm32/timer.h>
 #include <libopencm3/stm32/syscfg.h>
 
+#include <libopencm3/cm3/scb.h>
 #include <libopencm3/cm3/nvic.h>
+
 #include <libopencmsis/core_cm3.h>
 
 static void video_init_rcc(void);
@@ -44,6 +47,12 @@ static void video_init_comparator(void);
 static void video_init_comparator_interrupt(void);
 static void video_init_dac(void);
 static void video_init_spi(void);
+static void video_init_spi_dma(void);
+static void video_init_pendsv(void);
+
+static void video_dma_prepare(uint8_t page);
+static void video_dma_trigger(void);
+
 static void video_set_dac_value_mv(uint16_t target);
 static void video_set_dac_value_raw(uint16_t target);
 
@@ -54,7 +63,18 @@ volatile uint32_t video_line;
 volatile uint32_t video_field;
 volatile uint16_t video_sync_last_compare_value;
 
+
+
+
+// void TIM1_CC_IRQHandler(void) {
+void TIM1_CC_IRQHandler(void) {
+    timer_clear_flag(TIM1, TIM_SR_CC2IF);
+    led_toggle();
+}
+
 void video_init(void) {
+    debug_function_call();
+
     // uint16_t tmp = 0;
 
     video_init_rcc();
@@ -64,21 +84,22 @@ void video_init(void) {
 
     video_init_comparator();
     video_init_comparator_interrupt();
+    video_init_pendsv();
 
     video_init_dac();
 
     video_init_spi();
+    video_init_spi_dma();
 
     video_set_dac_value_mv(100);
+
+
     while (1) {
         // video_set_dac_value_mv(tmp);
 
         if (1) {  // video_dbg > 250) {
-            // debug_put_uint16(((VIDEO_SYNC_VSYNC_MIN)));debug(" to "); debug_put_uint16(VIDEO_SYNC_VSYNC_MAX); debug("  ----  ");
-            // debug_put_uint16((_US_TO_CLOCKS(15)));debug(" to "); debug_put_uint16(_US_TO_CLOCKS(29)); debug("\n");
-            // debug_put_uint16(1000*(VIDEO_SYNC_HI_SHORT - VIDEO_SYNC_HI_VSYNC)/2.0); debug(" ");
-            debug_put_uint16(video_line);
-            debug_put_newline();
+            // debug_put_uint16(video_line);
+            // debug_put_newline();
             // video_dbg = 0;
         }
     /*if (EXTI_EMR){
@@ -91,7 +112,16 @@ void video_init(void) {
     }
 }
 
+static void video_init_pendsv(void) {
+    debug_function_call();
+
+    nvic_set_priority(NVIC_PVD_IRQ, NVIC_PRIO_COMPARATOR);
+    nvic_enable_irq(NVIC_PVD_IRQ);
+}
+
 static void video_init_spi(void) {
+    debug_function_call();
+
     // SPI NVIC
     // nvic_set_priority(NVIC_SPI2_IRQ, 3);
     // nvic_enable_irq(NVIC_SPI2_IRQ);
@@ -110,7 +140,7 @@ static void video_init_spi(void) {
                     SPI_CR1_BAUDRATE_FPCLK_DIV_2,
                     SPI_CR1_CPOL_CLK_TO_0_WHEN_IDLE,
                     SPI_CR1_CPHA_CLK_TRANSITION_1,
-                    SPI_CR1_CRCL_16BIT,
+                    SPI_CR1_CRCL_8BIT,
                     SPI_CR1_MSBFIRST);
 
     // set NSS to software
@@ -125,10 +155,101 @@ static void video_init_spi(void) {
 
 
     // set fifo to quarter full(=1 byte)
-    spi_fifo_reception_threshold_16bit(VIDEO_SPI_WHITE);
+    spi_fifo_reception_threshold_8bit(VIDEO_SPI_WHITE);
+}
+
+static void video_init_spi_dma(void) {
+    debug_function_call();
+
+    // DMA NVIC
+    nvic_set_priority(NVIC_DMA1_CHANNEL2_3_IRQ, NVIC_PRIO_DMA1);
+    // nvic_enable_irq(NVIC_DMA1_CHANNEL2_3_IRQ); // NO IRQ beeing used here
+
+    // start with clean init
+    dma_channel_reset(VIDEO_DMA_WHITE, VIDEO_DMA_CHANNEL_WHITE);
+    // source and destination 2 Byte = 16bit
+    dma_set_memory_size(VIDEO_DMA_WHITE, VIDEO_DMA_CHANNEL_WHITE, DMA_CCR_MSIZE_8BIT);
+    dma_set_peripheral_size(VIDEO_DMA_WHITE, VIDEO_DMA_CHANNEL_WHITE, DMA_CCR_PSIZE_8BIT);
+    // automatic memory destination increment enable.
+    dma_enable_memory_increment_mode(VIDEO_DMA_WHITE, VIDEO_DMA_CHANNEL_WHITE);
+    // source address increment disable
+    dma_disable_peripheral_increment_mode(VIDEO_DMA_WHITE, VIDEO_DMA_CHANNEL_WHITE);
+    // Location assigned to peripheral register will be target
+    dma_set_read_from_memory(VIDEO_DMA_WHITE, VIDEO_DMA_CHANNEL_WHITE);
+    // source and destination start addresses
+    dma_set_peripheral_address(VIDEO_DMA_WHITE, VIDEO_DMA_CHANNEL_WHITE, (uint32_t)&(SPI_DR(VIDEO_SPI_WHITE)));
+    // target address will be set later
+    dma_set_memory_address(VIDEO_DMA_WHITE, VIDEO_DMA_CHANNEL_WHITE, 0);
+    // chunk of data to be transfered, will be set later
+    dma_set_number_of_data(VIDEO_DMA_WHITE, VIDEO_DMA_CHANNEL_WHITE, 1);
+    // very high prio
+    dma_set_priority(VIDEO_DMA_WHITE, VIDEO_DMA_CHANNEL_WHITE, DMA_CCR_PL_VERY_HIGH);
+
+    // start disabled
+    dma_disable_channel(VIDEO_DMA_WHITE, VIDEO_DMA_CHANNEL_WHITE);
+}
+
+void video_dma_prepare(uint8_t page) {
+    // disable DMA
+    dma_disable_channel(VIDEO_DMA_WHITE, VIDEO_DMA_CHANNEL_WHITE);
+
+    video_buffer[0][0] = 0x81;
+    video_buffer[0][1] = 0x02;
+    video_buffer[0][2] = 0x03;
+
+    //timer_disable_irq(TIM1, TIM_DIER_CC2DE);
+
+    // TX: transfer buffer to slave
+    dma_set_memory_address(VIDEO_DMA_WHITE, VIDEO_DMA_CHANNEL_WHITE, (uint32_t)video_buffer[page]);
+    dma_set_number_of_data(VIDEO_DMA_WHITE, VIDEO_DMA_CHANNEL_WHITE, 3);
+
+    // clear all dma if
+    dma_clear_interrupt_flags(VIDEO_DMA_WHITE, VIDEO_DMA_CHANNEL_WHITE, DMA_TCIF);
+    TIM1_SR = 0;
+
+    //timer_enable_irq(TIM1, TIM_DIER_CC2IE);
+
+    // enable both dma channels
+    dma_enable_channel(VIDEO_DMA_WHITE, VIDEO_DMA_CHANNEL_WHITE);
+}
+
+// waking up from sleep mode is quite deterministic
+// disable all interrupts except tim1 compare2 int
+void pend_sv_handler(void) {
+    led_toggle();
+
+    // disable all irqs EXCPET CC match here!
+    nvic_disable_irq(VIDEO_COMP_EXTI_IRQN);
+
+    // Clear pendSV flag
+    SCB_ICSR |= SCB_ICSR_PENDSVCLR;
+
+    // sleep now!
+    __WFI();
+
+    //debug("AWAKE\n");
+
+    // re-enable all irqs
+    nvic_enable_irq(VIDEO_COMP_EXTI_IRQN);
+}
+
+
+void video_dma_trigger(void) {
+    debug_function_call();
+
+    // trigger the SPI TX + RX dma
+    spi_enable_tx_dma(VIDEO_SPI_WHITE);
+
+    // wait for completion
+    while (!dma_get_interrupt_flag(VIDEO_DMA_WHITE, VIDEO_DMA_CHANNEL_WHITE, DMA_TCIF)) {}
+
+    // disable DMA
+    dma_disable_channel(VIDEO_DMA_WHITE, VIDEO_DMA_CHANNEL_WHITE);
 }
 
 static void video_init_rcc(void) {
+    debug_function_call();
+
     // DAC clock
     rcc_periph_clock_enable(RCC_DAC);
 
@@ -143,19 +264,31 @@ static void video_init_rcc(void) {
 
     // spi
     rcc_periph_clock_enable(VIDEO_SPI_WHITE_RCC);
+
+    // enable DMA Peripheral Clock
+    rcc_periph_clock_enable(RCC_DMA);
 }
 
 static void video_init_gpio(void) {
+    debug_function_call();
+
     // set video input pin as input
     gpio_mode_setup(VIDEO_GPIO, GPIO_MODE_ANALOG, GPIO_PUPD_NONE, VIDEO_INPUT_PIN);
 
     // set dac to output
     gpio_mode_setup(VIDEO_GPIO, GPIO_MODE_ANALOG, GPIO_PUPD_NONE, VIDEO_DAC_OUT_PIN);
     gpio_set_output_options(VIDEO_GPIO, GPIO_OTYPE_PP, GPIO_OSPEED_50MHZ, VIDEO_DAC_OUT_PIN);
+
+    // set spi to output
+    // init sck (5, for dbg), MOSI (7)
+    uint32_t spi_gpios = GPIO5 | GPIO7;
+    // set mode
+    gpio_mode_setup(VIDEO_GPIO, GPIO_MODE_AF, GPIO_PUPD_NONE, spi_gpios);
+    gpio_set_output_options(VIDEO_GPIO, GPIO_OTYPE_PP, GPIO_OSPEED_50MHZ, spi_gpios);
 }
 
 static void video_init_comparator(void) {
-    debug("cvideo: comparator init\n");
+    debug_function_call();
 
     // start disabled
     comp_disable(COMP1);
@@ -165,7 +298,7 @@ static void video_init_comparator(void) {
     // inm = DAC_OUT_1 (PA4) -> INM4
     comp_select_input(COMP1, COMP_CSR_INSEL_INM4);
 
-    // no output
+    // IC1 output
     comp_select_output(COMP1, COMP_CSR_OUTSEL_TIM1_IC1);
 
     // hysteresis
@@ -179,7 +312,11 @@ static void video_init_comparator(void) {
 }
 
 static void video_init_timer(void) {
+    debug_function_call();
+
     uint16_t prescaler;
+
+    timer_disable_counter(TIM1);
 
     // reset TIMx peripheral
     timer_reset(TIM1);
@@ -200,6 +337,17 @@ static void video_init_timer(void) {
     timer_ic_set_filter(TIM1, TIM_IC1, TIM_IC_OFF);
     timer_ic_enable(TIM1, TIM_IC1);
 
+    // timer_set_oc_mode(TIM1, TIM_OC2, TIM_OCM_FROZEN);
+
+    // set up oc2 interrupt
+    nvic_set_priority(NVIC_TIM1_CC_IRQ, NVIC_PRIO_COMPARATOR);
+    nvic_enable_irq(NVIC_TIM1_CC_IRQ);
+    timer_set_dma_on_compare_event(TIM1);
+    timer_enable_irq(TIM1, TIM_DIER_CC2IE);
+    // timer_disable_oc_preload(TIM1, TIM_OC2);
+
+
+
     // line frequency
     // NTSC (color) 15734 Hz = 63.56 us per line
     // PAL          15625 Hz = 64.00 us per line (54 us line content)
@@ -208,9 +356,9 @@ static void video_init_timer(void) {
     debug("cvideo: tim1 presc ");
     debug_put_uint16(prescaler);
     timer_set_prescaler(TIM1, prescaler - 1);
-    timer_set_repetition_counter(TIM1, 0);
+    // timer_set_repetition_counter(TIM1, 0);
 
-    timer_enable_preload(TIM1);
+    // timer_enable_preload(TIM1);
     timer_continuous_mode(TIM1);
     timer_set_period(TIM1, 0xFFFF);
 
@@ -219,7 +367,7 @@ static void video_init_timer(void) {
 }
 
 static void video_init_comparator_interrupt(void) {
-    debug("cvideo: comparator init ISR\n");
+    debug_function_call();
 
     // set up exti source
     exti_set_trigger(VIDEO_COMP_EXTI_SOURCE_LINE, EXTI_TRIGGER_BOTH);
@@ -240,7 +388,7 @@ void ADC_COMP_IRQHandler(void) {
     // calc duration
     uint16_t current_compare_value = TIM_CCR1(TIM1);
     uint16_t pulse_len = current_compare_value - video_sync_last_compare_value;
-video_dbg = pulse_len;
+    video_dbg = pulse_len;
 
     // we trigger on both edges
     // check if this was rising or falling edge:
@@ -249,7 +397,18 @@ video_dbg = pulse_len;
         if ((pulse_len > VIDEO_SYNC_VSYNC_MIN) && (pulse_len < VIDEO_SYNC_VSYNC_MAX)) {
             // this was the last half line -> hsync!
             video_field = VIDEO_FIRST_FIELD;
-            led_toggle();
+            led_on();
+            // spi_send(VIDEO_SPI_WHITE, 0x7FF7);
+
+            // timer_set_dma_on_update_event(TIM1);
+
+            // timer_enable_oc_output(TIM1, TIM_OC2);
+            // timer_disable_oc_clear(TIM1, TIM_OC2);
+            // timer_set_oc_slow_mode(TIM1, TIM_OC2);
+            // timer_set_oc_mode(TIM1, TIM_OC2, TIM_OCM_TOGGLE);
+            //
+            // video_dma_trigger();
+           // timer_disable_preload(TIM1);
         }
     } else  {
         // rising edge -> this was measuring the a sync part
@@ -258,25 +417,52 @@ video_dbg = pulse_len;
             // new (half)frame -> init line counter
             video_line = video_field;
 
+
         } else if (pulse_len < VIDEO_SYNC_HSYNC_MAX) {
             // this is longer than a short sync and not a broad sync
 
             // increment video field
             video_line += 2;
 
+          //  dma_disable_channel(VIDEO_DMA_WHITE, VIDEO_DMA_CHANNEL_WHITE);
+            // video_dma_prepare(0);
+            // video_dma_trigger();
+
+
+            //timer_enable_irq(TIM1, TIM_DIER_CC2IE);
+            timer_set_oc_value(TIM1, TIM_OC2, current_compare_value + _US_TO_CLOCKS(25));
+
+            // set pending sleep, mcu will enter sleep mode now
+            // debug("PENDVSET\n");
+            //SCB_ICSR |= SCB_ICSR_PENDSVSET;
+
+            // timer_disable_preload(TIM1);
+/*            timer_set_oc_value(TIM1, TIM_OC2, TIM1_CNT + 60); //current_compare_value+150);
+delay_us(45000);
+while (!dma_get_interrupt_flag(VIDEO_DMA_WHITE, VIDEO_DMA_CHANNEL_WHITE, DMA_TCIF)) {}
+
+// disable DMA
+dma_disable_channel(VIDEO_DMA_WHITE, VIDEO_DMA_CHANNEL_WHITE);
+*/
             // prepare for the next field
             video_field = 1 - VIDEO_FIRST_FIELD;
         } else {
             // this is a broad sync
             // prepare video transmission
+            // configure timer compare match output
+            // video_dma_trigger();
         }
     }
 
     // store current value for period measurements
-   video_sync_last_compare_value = current_compare_value;
+    video_sync_last_compare_value = current_compare_value;
 }
 
+
+
 static void video_init_dac(void) {
+    debug_function_call();
+
     // start with disabled dac
     dac_disable(CHANNEL_1);
     dac_disable_waveform_generation(CHANNEL_1);
@@ -293,18 +479,18 @@ static void video_init_dac(void) {
 // set dac to a given voltage level
 static void video_set_dac_value_mv(uint16_t target) {
     uint32_t tmp = target;
-    debug("cvideo: dac set ");
+    debug("cvideo: set_dac_value_mv(");
     debug_put_fixed1p3(target);
-    debug_put_newline();
+    debug(")\n");
 
     tmp = (tmp * 0x0FFF) / (VIDEO_DAC_VCC * 1000);
     video_set_dac_value_raw(tmp);
 }
 
 static void video_set_dac_value_raw(uint16_t target) {
-    debug("cvideo: dac set raw 0x");
+    debug("cvideo: set_dac_value_raw(0x");
     debug_put_hex16(target);
-    debug_put_newline();
+    debug(")\n");
 
     dac_load_data_buffer_single(target, RIGHT12, CHANNEL_1);
     dac_software_trigger(CHANNEL_1);

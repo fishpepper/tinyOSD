@@ -10,6 +10,7 @@
 
 #define NVIC_PRIO_COMPARATOR 0*64
 #define NVIC_PRIO_SYSTICK    1*64
+#define NVIC_PRIO_DMA1       2*64
 
 #define VIDEO_GPIO          GPIOA
 #define VIDEO_INPUT_PIN     GPIO1
@@ -23,4 +24,6 @@
 #define VIDEO_SPI_WHITE           SPI1
 #define VIDEO_SPI_WHITE_RCC       RCC_SPI1
 
+#define VIDEO_DMA_WHITE         DMA1
+#define VIDEO_DMA_CHANNEL_WHITE DMA_CHANNEL3
 
