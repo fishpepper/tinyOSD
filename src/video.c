@@ -274,10 +274,10 @@ void video_dma_prepare(uint8_t page) {
     dma_set_memory_address(VIDEO_DMA_WHITE, VIDEO_DMA_CHANNEL_WHITE, (uint32_t)video_buffer[page]);
     dma_set_number_of_data(VIDEO_DMA_WHITE, VIDEO_DMA_CHANNEL_WHITE, 4);
 
-    //timer_set_oc_mode(TIM1, TIM_OC2, TIM_CCMR1_OC2M_FORCE_LOW);
+    timer_set_oc_mode(TIM1, TIM_OC2, TIM_CCMR1_OC2M_FORCE_LOW);
 
     // clear all dma if
-    //dma_clear_interrupt_flags(VIDEO_DMA_WHITE, VIDEO_DMA_CHANNEL_WHITE, DMA_TCIF);
+    dma_clear_interrupt_flags(VIDEO_DMA_WHITE, 0xFFFF); //VIDEO_DMA_CHANNEL_WHITE, DMA_TCIF);
 
     // enable dma channel
     dma_enable_channel(VIDEO_DMA_WHITE, VIDEO_DMA_CHANNEL_WHITE);
