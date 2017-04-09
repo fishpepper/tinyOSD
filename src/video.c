@@ -196,7 +196,7 @@ static void video_init_spi(void) {
 
 
     // set fifo to quarter full(=1 byte)
-    spi_fifo_reception_threshold_8bit(VIDEO_SPI_WHITE);
+    //spi_fifo_reception_threshold_8bit(VIDEO_SPI_WHITE);
 }
 
 void DMA1_CHANNEL2_3_IRQHandler(void) {
@@ -270,14 +270,38 @@ void video_dma_prepare(uint8_t page) {
     video_buffer[0][2] = 0b00111111;
     video_buffer[0][3] = 0b01010101;
 
+
     // TX: transfer buffer to slave
     dma_set_memory_address(VIDEO_DMA_WHITE, VIDEO_DMA_CHANNEL_WHITE, (uint32_t)video_buffer[page]);
     dma_set_number_of_data(VIDEO_DMA_WHITE, VIDEO_DMA_CHANNEL_WHITE, 4);
 
-    timer_set_oc_mode(TIM1, TIM_OC2, TIM_CCMR1_OC2M_FORCE_LOW);
+    //timer_set_oc_mode(TIM1, TIM_OC2, TIM_CCMR1_OC2M_FORCE_LOW);
+
 
     // clear all dma if
-    dma_clear_interrupt_flags(VIDEO_DMA_WHITE, 0xFFFF); //VIDEO_DMA_CHANNEL_WHITE, DMA_TCIF);
+    dma_clear_interrupt_flags(VIDEO_DMA_WHITE, VIDEO_DMA_CHANNEL_WHITE, DMA_TCIF);
+//    DMA1_IFCR = DMA1_ISR;
+//debug_put_hex32(DMA1_ISR); debug_put_newline();
+
+#if 1
+    // HACK/WORKAROUND: seems like one DMA tx is pending
+    // how do we clear it? no idea. Instead: redirect this first dma to
+    // an unused peripheral
+    dma_set_peripheral_address(VIDEO_DMA_WHITE, VIDEO_DMA_CHANNEL_WHITE, (uint32_t)&(TIM7_CNT));
+    // enable dma channel
+    dma_enable_channel(VIDEO_DMA_WHITE, VIDEO_DMA_CHANNEL_WHITE);
+    // wait for some time
+    delay_us(1);
+
+    // disable dma during config
+    dma_disable_channel(VIDEO_DMA_WHITE, VIDEO_DMA_CHANNEL_WHITE);
+
+    // back to spi
+    dma_set_peripheral_address(VIDEO_DMA_WHITE, VIDEO_DMA_CHANNEL_WHITE, (uint32_t)&(SPI_DR(VIDEO_SPI_WHITE)));
+    // TX: transfer buffer to slave
+    dma_set_memory_address(VIDEO_DMA_WHITE, VIDEO_DMA_CHANNEL_WHITE, (uint32_t)video_buffer[page]);
+    dma_set_number_of_data(VIDEO_DMA_WHITE, VIDEO_DMA_CHANNEL_WHITE, 4);
+#endif
 
     // enable dma channel
     dma_enable_channel(VIDEO_DMA_WHITE, VIDEO_DMA_CHANNEL_WHITE);
@@ -501,18 +525,18 @@ static void video_init_timer(void) {
     // continuous mode
     timer_continuous_mode(TIM2);
     // period
-    uint32_t period = 20;
+    uint32_t period = 2;
     timer_set_period(TIM2, period);
     // set up oc2
     timer_set_oc_value(TIM2, TIM_OC2, period/2);
     //timer_set_oc_mode(TIM2, TIM_OC2, TIM_OCM_FROZEN);
     //timer_disable_oc_preload(TIM2, TIM_OC2);
     // clear timer
-    TIM2_CNT = 0;
+    // TIM2_CNT = 0;
 
     // set TIM1 as master -> OC2 is sent as signal
     timer_set_master_mode(TIM1, TIM_CR2_MMS_COMPARE_OC2REF);
-    //TIM1_SMCR |= TIM_SMCR_MSM;
+    TIM1_SMCR |= TIM_SMCR_MSM;
 
     // set TIM2 as slave
     // set ITR0 = connected to TIM1
@@ -606,21 +630,31 @@ void ADC_COMP_IRQHandler(void) {
           //  dma_disable_channel(VIDEO_DMA_WHITE, VIDEO_DMA_CHANNEL_WHITE);
             // video_dma_trigger();
 
+            led_on();
+            timer_disable_counter(TIM2);
+            TIM2_CNT = 0;
+            timer_set_oc_mode(TIM1, TIM_OC2, TIM_CCMR1_OC2M_FORCE_LOW);
+
             //video_dma_trigger();
             // prepare line data transfer
+            // set oc match to start of line data
+            timer_disable_preload(TIM1);
+            timer_disable_preload(TIM2);
+            timer_set_oc_value(TIM1, TIM_OC2, current_compare_value + _US_TO_CLOCKS(45));
+
+            // set mode to toggle on compare match (was low -> will get high)
+            //timer_set_oc_mode(TIM1, TIM_OC2, TIM_CCMR1_OCM_PWM2); //TOGGLE);
+            timer_set_oc_mode(TIM1, TIM_OC2, TIM_OCM_PWM2);
+
+            led_off();
             video_dma_prepare(0);
             delay_us(5);
             led_on();
-            // set oc match to start of line data
-            timer_set_oc_value(TIM1, TIM_OC2, current_compare_value + _US_TO_CLOCKS(25));
-            // set mode to toggle on compare match (was low -> will get high)
-            //timer_set_oc_mode(TIM1, TIM_OC2, TIM_CCMR1_OCM_PWM2); //TOGGLE);
-            timer_set_oc_mode(TIM1, TIM_OC2, TIM_OCM_TOGGLE);
 
             //timer_enable_irq(TIM1, TIM_DIER_CC2IE);
             /*timer_clear_flag(TIM1, TIM_SR_CC2IF);
 */
-            // timer_disable_preload(TIM1);
+            //
 /*            timer_set_oc_value(TIM1, TIM_OC2, TIM1_CNT + 60); //current_compare_value+150);
 delay_us(45000);
 while (!dma_get_interrupt_flag(VIDEO_DMA_WHITE, VIDEO_DMA_CHANNEL_WHITE, DMA_TCIF)) {}
