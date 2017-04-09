@@ -45,7 +45,7 @@ int main(void) {
     while (1) {
         debug("main: tick\n");
         delay_ms(1000);
-        led_toggle();
+        //led_toggle();
     }
 }
 
