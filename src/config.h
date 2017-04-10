@@ -11,7 +11,7 @@
 #define NVIC_PRIO_COMPARATOR 0*64
 #define NVIC_PRIO_TIMER1     1*64
 #define NVIC_PRIO_SYSTICK    2*64
-#define NVIC_PRIO_DMA1       3*64
+#define NVIC_PRIO_DMA1       1*64
 #define NVIC_PRIO_PENDSV     2*64
 
 #define VIDEO_GPIO          GPIOA

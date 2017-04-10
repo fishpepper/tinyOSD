@@ -57,7 +57,7 @@ static void video_set_dac_value_mv(uint16_t target);
 static void video_set_dac_value_raw(uint16_t target);
 
 #define VIDEO_BUFFER_WIDTH 40
-volatile uint8_t video_buffer[2][VIDEO_BUFFER_WIDTH];
+volatile uint8_t video_buffer[2][VIDEO_BUFFER_WIDTH+1];
 
 volatile uint32_t video_dbg;
 volatile uint32_t video_line;
@@ -103,21 +103,36 @@ void video_init(void) {
     //timer_set_dma_on_compare_event(TIM1);
 
     for(uint32_t i=0; i<VIDEO_BUFFER_WIDTH; i++){
-        video_buffer[0][i] = 0xaa;
-        video_buffer[1][i] = 0xaa;
+        video_buffer[0][i] = 0x00;
+        video_buffer[1][i] = 0xFF;
     }
 
     video_buffer[0][0] = 0;
-    video_buffer[0][1] = 0b10000010;
-    video_buffer[0][1] = 0b11000000;
-    video_buffer[0][VIDEO_BUFFER_WIDTH/2] = 0xFF;
-    video_buffer[0][VIDEO_BUFFER_WIDTH-2] = 0b00000001;
-    video_buffer[0][VIDEO_BUFFER_WIDTH-1] = 0;
+    video_buffer[0][1] = 0b10000000;
 
+    video_buffer[0][VIDEO_BUFFER_WIDTH/2] = 0xAA;
+
+    // this is the lastbyte that is transferred:
+    video_buffer[0][VIDEO_BUFFER_WIDTH-4] = 0x0;
+
+
+    /*for(uint32_t i=VIDEO_BUFFER_WIDTH-4; i<VIDEO_BUFFER_WIDTH-3; i++){
+        video_buffer[0][i] = 0xFF;
+    }*/
 
     led_off();
 video_dma_prepare(0);
+uint8_t d = 0;
 while(1){
+    d = d << 1;
+    d = d | 1;
+    if (d==0xFF) d=1;
+    for(uint32_t i=0; i<VIDEO_BUFFER_WIDTH; i++){
+        video_buffer[0][i] = d;
+    }
+
+    // this is the lastbyte that is transferred:
+    video_buffer[0][VIDEO_BUFFER_WIDTH-4] = 0x0;
 
     debug("T1CNT = "); debug_put_hex32(TIM1_CNT); debug(" ");
     debug("T2CNT = "); debug_put_hex32(TIM2_CNT); debug(" ");
@@ -210,10 +225,14 @@ static void video_init_spi(void) {
 
 
     // set fifo to quarter full(=1 byte)
-    //spi_fifo_reception_threshold_8bit(VIDEO_SPI_WHITE);
+    spi_fifo_reception_threshold_8bit(VIDEO_SPI_WHITE);
 }
 
 void DMA1_CHANNEL2_3_IRQHandler(void) {
+    // wait for completion to finish (SPI has 4 byte fifo)
+    //while ((SPI_SR(VIDEO_SPI_WHITE) & SPI_SR_FTLVL_FIFO_FULL) != 0) {}
+delay_us(1);
+
     // disable TIM2 (sends pulses to DMA)
     timer_disable_counter(TIM2);
     timer_set_oc_mode(TIM1, TIM_OC2, TIM_CCMR1_OC2M_FORCE_LOW);
@@ -533,11 +552,14 @@ static void video_init_timer(void) {
     timer_set_prescaler(TIM2, 0);
     // continuous mode
     timer_continuous_mode(TIM2);
-    // period
-    uint32_t period = 31;
+    // period.
+    // SCK is running at 12mhz
+    // timer is running with 48mhz
+    // 8 clocks are 1 byte -> we need a new trigger every 8*4 clocks
+    uint32_t period = 8*4-5;
     timer_set_period(TIM2, period);
     // set up oc2
-    timer_set_oc_value(TIM2, TIM_OC2, period/2);
+    timer_set_oc_value(TIM2, TIM_OC2, 1); //period/2);
     //timer_set_oc_mode(TIM2, TIM_OC2, TIM_OCM_FROZEN);
     //timer_disable_oc_preload(TIM2, TIM_OC2);
     // clear timer
@@ -648,7 +670,7 @@ void ADC_COMP_IRQHandler(void) {
 
             // TX: transfer buffer to slave
             dma_set_memory_address(VIDEO_DMA_WHITE, VIDEO_DMA_CHANNEL_WHITE, (uint32_t)video_buffer[0]);
-            dma_set_number_of_data(VIDEO_DMA_WHITE, VIDEO_DMA_CHANNEL_WHITE, VIDEO_BUFFER_WIDTH);
+            dma_set_number_of_data(VIDEO_DMA_WHITE, VIDEO_DMA_CHANNEL_WHITE, VIDEO_BUFFER_WIDTH-1);
 
             // clear pending dma request from timer
             timer_enable_irq(TIM2, TIM_DIER_CC2DE);
