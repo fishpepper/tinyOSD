@@ -4,7 +4,7 @@
 import sys
 fn = sys.argv[1]
 fh = open(fn, "r")
-out = open("logo.h", "w")
+out = open("src/logo.h", "w")
 
 header    = fh.readline()
 comment   = fh.readline()
@@ -22,6 +22,8 @@ if not (width % 8 == 0):
     print("ERROR: image width has to be a multiple of 8!")
     exit(0)
 
+out.write("#ifndef LOGO_H__\n")
+out.write("#define LOGO_H__\n")
 out.write("#include <stdint.h>\n")
 out.write("\n")
 out.write("#define LOGO_WIDTH " + str(width) + "\n")
@@ -59,5 +61,6 @@ for line in fh:
     byte_count = byte_count + 1
 
 out.write("\n};")
+out.write("\n#endif  // LOGO_H__\n")
 fh.close()
 out.close()

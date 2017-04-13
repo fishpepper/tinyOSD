@@ -709,3 +709,4 @@ src/timeout.h
 src/composite_video.c
 src/video.c
 src/video.h
+src/logo.h

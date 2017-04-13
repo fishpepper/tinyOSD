@@ -24,6 +24,7 @@
 #include "delay.h"
 #include "clocksource.h"
 #include "led.h"
+#include "logo.h"
 
 #include <libopencm3/stm32/rcc.h>
 #include <libopencm3/stm32/gpio.h>
@@ -120,46 +121,40 @@ void video_init(void) {
 
     led_off();
 video_dma_prepare(0);
-uint32_t d = 0;
 
-video_buffer[0][0] = 1;
-video_buffer[0][1] = 2;
-video_buffer[0][2] = 3;
-video_buffer[0][3] = 4;
-video_buffer[0][4] = 4;
-video_buffer[0][5] = 4;
-video_buffer[0][6] = 4;
-video_buffer[0][7] = 4;
 for(uint8_t i=0; i<VIDEO_BUFFER_WIDTH-1; i++) {
-    video_buffer[0][i] = 4;
+    video_buffer[0][i] = 0;
 }
+video_buffer[0][VIDEO_BUFFER_WIDTH-1] = 0;
 
 //timer_disable_counter(TIM1);
+uint32_t data = 0;
+uint32_t logo_start_line = 625/2 - LOGO_HEIGHT/2;
+uint32_t logo_end_line   = 625/2 + LOGO_HEIGHT/2;
+uint32_t logo_offset_x   = VIDEO_BUFFER_WIDTH/2 - LOGO_WIDTH/8/2;
+uint32_t logo_offset;
+uint8_t *logo_ptr;
+uint8_t *framebuffer_ptr;
 
 while(1){
 
-    d++;
+    // copy next line to buffer:
+    if ((video_line > logo_start_line) && (video_line < logo_end_line)){
+        logo_offset = (video_line - logo_start_line) * (LOGO_WIDTH/8);
+        logo_ptr = &logo_data[logo_offset];
 
-    for(uint32_t i=0; i<VIDEO_BUFFER_WIDTH; i++){
-        video_buffer[0][i] = 0;
-        if ((d>>3) == i) {
-            video_buffer[0][i] |= 1<<(7-(d&0x07));
-            //video_buffer[0][i] = 0xFF;
+        framebuffer_ptr = &video_buffer[0][logo_offset_x];
+
+        for(uint32_t x = 0; x < LOGO_WIDTH/8; x++){
+            *framebuffer_ptr++ = *logo_ptr++;
+        }
+    }else{
+        // no image data region
+        for(uint32_t x = 0; x < VIDEO_BUFFER_WIDTH-1; x++){
+           video_buffer[0][x] = 0;
         }
     }
-    if((d>>3) > 60) d = 0;
-    // this is the lastbyte that is transferred:
-    //video_buffer[0][VIDEO_BUFFER_WIDTH-4] = 0x0;
-    //video_dma_prepare(0);
 
-    debug("T1CNT = "); debug_put_hex32(TIM1_CNT); debug(" ");
-    debug("T2CNT = "); debug_put_hex32(TIM2_CNT); debug(" ");
-    debug_put_newline();
-
-    //video_spi_cr_trigger = SPI_CR2(SPI1) | SPI_CR2_TXDMAEN;
-    //SPI_CR2(SPI1) = video_spi_cr_trigger;
-    //spi_enable_tx_dma(VIDEO_SPI_WHITE);
-    delay_us(100000);
 
 };
     //timer_clear_flag(TIM1, TIM_SR_CC2IF);
@@ -669,7 +664,7 @@ void ADC_COMP_IRQHandler(void) {
             video_dma_prepare(0);
             //spi_enable_tx_dma(SPI1);
 
-            timer_set_oc_value(TIM1, TIM_OC1, current_compare_value + _US_TO_CLOCKS(12));
+            timer_set_oc_value(TIM1, TIM_OC1, current_compare_value + _US_TO_CLOCKS(14));
 
 
             // TX: transfer buffer to slave
