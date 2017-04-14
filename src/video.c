@@ -85,6 +85,22 @@ void TIM1_CC_IRQHandler(void) {
     }
 }
 
+static const uint32_t video_cos_table[90] = {
+    0x64, 0x63, 0x63, 0x63, 0x63, 0x63, 0x63, 0x63,
+    0x63, 0x62, 0x62, 0x62, 0x61, 0x61, 0x61, 0x60,
+    0x60, 0x5f, 0x5f, 0x5e, 0x5d, 0x5d, 0x5c, 0x5c,
+    0x5b, 0x5a, 0x59, 0x59, 0x58, 0x57, 0x56, 0x55,
+    0x54, 0x53, 0x52, 0x51, 0x50, 0x4f, 0x4e, 0x4d,
+    0x4c, 0x4b, 0x4a, 0x49, 0x47, 0x46, 0x45, 0x44,
+    0x42, 0x41, 0x40, 0x3e, 0x3d, 0x3c, 0x3a, 0x39,
+    0x37, 0x36, 0x35, 0x33, 0x32, 0x30, 0x2e, 0x2d,
+    0x2b, 0x2a, 0x28, 0x27, 0x25, 0x23, 0x22, 0x20,
+    0x1e, 0x1d, 0x1b, 0x19, 0x18, 0x16, 0x14, 0x13,
+    0x11, 0xf, 0xd, 0xc, 0xa, 0x8, 0x7, 0x5, 0x3,
+    0x1
+};
+
+
 void video_init(void) {
     debug_function_call();
 
@@ -144,9 +160,35 @@ uint8_t *logo_ptr;
 uint8_t *framebuffer_ptr;
 uint8_t *video_buffer_ptr;
 
+uint32_t ani_count = 0;
+uint32_t ani_dir   = 0;
 
 while(1){
+
+
     if (video_buffer_fill_request != VIDEO_BUFFER_FILL_REQUEST_IDLE) {
+        if (video_line == 2) {
+            ani_count+=4;
+            if (ani_count >=360) {
+                ani_count -= 360;
+            }
+        }
+
+        uint32_t scale;
+        if (ani_count < 90) {
+            scale   = video_cos_table[ani_count];
+            ani_dir = 0;
+        }else if (ani_count < 180) {
+            scale   = video_cos_table[180 - ani_count];
+            ani_dir = 1;
+        }else if (ani_count < 270) {
+            scale   = video_cos_table[ani_count - 180];
+            ani_dir = 1;
+        }else{
+            scale   = video_cos_table[360 - ani_count];
+            ani_dir = 0;
+        }
+
         // we have a new request, osd is rendering the other page now,
         // time to prepare the next page!
         //debug("filling page "); debug_put_uint8(video_buffer_fill_request); debug_put_newline();
@@ -154,13 +196,21 @@ while(1){
         // calculate line number:
         uint32_t line    = video_line + 2;
 
+        logo_start_line = 625/2 - (scale * LOGO_HEIGHT/2) / 100;
+        logo_end_line   = 625/2 + (scale * LOGO_HEIGHT/2) / 100;
+
         // fetch correct buffer ptr
         video_buffer_ptr = &video_buffer[video_buffer_fill_request][0];
 
         // fill the next line of data now:
         if ((line > logo_start_line) && (line < logo_end_line)){
-            logo_offset = (line - logo_start_line) * (LOGO_WIDTH/8);
-            logo_ptr = &logo_data[logo_offset];
+            logo_offset = (line - logo_start_line) * 100 / scale * (LOGO_WIDTH/8);
+            if (ani_dir) {
+                logo_ptr = &logo_data[logo_offset];
+            } else {
+                logo_ptr = &logo_data[LOGO_HEIGHT*LOGO_WIDTH/8 - logo_offset];
+            }
+
 
             for (uint32_t i = 0; i < logo_offset_x; i++){
                 *video_buffer_ptr++ = 0;
@@ -281,21 +331,7 @@ void DMA1_CHANNEL2_3_IRQHandler(void) {
     dma_clear_interrupt_flags(VIDEO_DMA_WHITE, DMA_CHANNEL2, DMA_TCIF);
     dma_clear_interrupt_flags(VIDEO_DMA_WHITE, DMA_CHANNEL3, DMA_TCIF);
 
-    // disable OC match dma trigger
-    //timer_disable_irq(TIM2, TIM_DIER_CC2DE);
-
-    // disable dma
-    //dma_disable_channel(VIDEO_DMA_WHITE, DMA_CHANNEL2);
-    //dma_disable_channel(VIDEO_DMA_WHITE, DMA_CHANNEL3);
-
-    // clear OC2REF, next trigger will re initiate transfer
-    //timer_set_oc_mode(TIM1, TIM_OC2, TIM_CCMR1_OC2M_FORCE_LOW);
-  //  timer_set_oc_mode(TIM1, TIM_OC2, TIM_OCM_PWM2);
-//
     led_off();
-//    led_off(); delay_us(2);led_on(); delay_us(2);
-//    led_off(); delay_us(2);led_on(); delay_us(2);
-
 }
 
 static void video_init_spi_dma(void) {
