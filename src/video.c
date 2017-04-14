@@ -51,7 +51,7 @@ static void video_init_spi(void);
 static void video_init_spi_dma(void);
 static void video_init_pendsv(void);
 
-static void video_dma_prepare(uint8_t page);
+static void video_dma_prepare();
 static void video_dma_trigger(void);
 
 static void video_set_dac_value_mv(uint16_t target);
@@ -66,6 +66,11 @@ volatile uint32_t video_field;
 volatile uint16_t video_sync_last_compare_value;
 
 volatile uint32_t video_spi_cr_trigger;
+
+
+volatile uint32_t video_buffer_fill_request;
+volatile uint32_t video_buffer_page;
+#define VIDEO_BUFFER_FILL_REQUEST_IDLE 3
 
 
 // void TIM1_CC_IRQHandler(void) {
@@ -119,15 +124,17 @@ void video_init(void) {
         video_buffer[0][i] = 0xFF;
     }*/
 
+    video_buffer_fill_request = VIDEO_BUFFER_FILL_REQUEST_IDLE;
+
     led_off();
-video_dma_prepare(0);
 
-for(uint8_t i=0; i<VIDEO_BUFFER_WIDTH-1; i++) {
-    video_buffer[0][i] = 0;
-}
-video_buffer[0][VIDEO_BUFFER_WIDTH-1] = 0;
+    for(uint8_t i=0; i<VIDEO_BUFFER_WIDTH-1; i++) {
+        video_buffer[0][i] = 0;
+        video_buffer[1][i] = 0;
+    }
 
-//timer_disable_counter(TIM1);
+    video_dma_prepare();
+
 uint32_t data = 0;
 uint32_t logo_start_line = 625/2 - LOGO_HEIGHT/2;
 uint32_t logo_end_line   = 625/2 + LOGO_HEIGHT/2;
@@ -135,26 +142,52 @@ uint32_t logo_offset_x   = VIDEO_BUFFER_WIDTH/2 - LOGO_WIDTH/8/2;
 uint32_t logo_offset;
 uint8_t *logo_ptr;
 uint8_t *framebuffer_ptr;
+uint8_t *video_buffer_ptr;
+
 
 while(1){
+    if (video_buffer_fill_request != VIDEO_BUFFER_FILL_REQUEST_IDLE) {
+        // we have a new request, osd is rendering the other page now,
+        // time to prepare the next page!
+        //debug("filling page "); debug_put_uint8(video_buffer_fill_request); debug_put_newline();
 
-    // copy next line to buffer:
-    if ((video_line > logo_start_line) && (video_line < logo_end_line)){
-        logo_offset = (video_line - logo_start_line) * (LOGO_WIDTH/8);
-        logo_ptr = &logo_data[logo_offset];
+        // calculate line number:
+        uint32_t line    = video_line + 2;
 
-        framebuffer_ptr = &video_buffer[0][logo_offset_x];
+        // fetch correct buffer ptr
+        video_buffer_ptr = &video_buffer[video_buffer_fill_request][0];
 
-        for(uint32_t x = 0; x < LOGO_WIDTH/8; x++){
-            *framebuffer_ptr++ = *logo_ptr++;
+        // fill the next line of data now:
+        if ((line > logo_start_line) && (line < logo_end_line)){
+            logo_offset = (line - logo_start_line) * (LOGO_WIDTH/8);
+            logo_ptr = &logo_data[logo_offset];
+
+            for (uint32_t i = 0; i < logo_offset_x; i++){
+                *video_buffer_ptr++ = 0;
+            }
+            for(uint32_t i = 0; i < LOGO_WIDTH/8; i++){
+                *video_buffer_ptr++ = *logo_ptr++;
+            }
+            for (uint32_t i =0; i < VIDEO_BUFFER_WIDTH; i++){
+                *video_buffer_ptr++ = 0;
+            }
+
+        }else{
+            // no image data region
+            for(uint32_t x = 0; x < VIDEO_BUFFER_WIDTH-1; x++){
+               *video_buffer_ptr++ = 0;
+            }
         }
-    }else{
-        // no image data region
-        for(uint32_t x = 0; x < VIDEO_BUFFER_WIDTH-1; x++){
-           video_buffer[0][x] = 0;
-        }
+
+        // always make sure the last pixel is zero
+        // THIS IS MANDATORY! otherwise the spi level stay high and ruins the image
+        video_buffer[video_buffer_fill_request][VIDEO_BUFFER_WIDTH-1] &= 0xF7;
+
+
+        // clear request
+        video_buffer_fill_request = VIDEO_BUFFER_FILL_REQUEST_IDLE;
+        //debug("ok\n");
     }
-
 
 };
     //timer_clear_flag(TIM1, TIM_SR_CC2IF);
@@ -244,14 +277,6 @@ static void video_init_spi(void) {
 }
 
 void DMA1_CHANNEL2_3_IRQHandler(void) {
-    // wait for completion to finish (SPI has 4 byte fifo)
-    //while ((SPI_SR(VIDEO_SPI_WHITE) & SPI_SR_FTLVL_FIFO_FULL) != 0) {}
-    //delay_us(1);
-
-    // disable TIM2 (sends pulses to DMA)
-    //timer_disable_counter(TIM2);
-    //timer_set_oc_mode(TIM1, TIM_OC2, TIM_CCMR1_OC2M_FORCE_LOW);
-
     // clear flag
     dma_clear_interrupt_flags(VIDEO_DMA_WHITE, DMA_CHANNEL2, DMA_TCIF);
     dma_clear_interrupt_flags(VIDEO_DMA_WHITE, DMA_CHANNEL3, DMA_TCIF);
@@ -261,19 +286,16 @@ void DMA1_CHANNEL2_3_IRQHandler(void) {
 
     // disable dma
     //dma_disable_channel(VIDEO_DMA_WHITE, DMA_CHANNEL2);
+    //dma_disable_channel(VIDEO_DMA_WHITE, DMA_CHANNEL3);
 
     // clear OC2REF, next trigger will re initiate transfer
     //timer_set_oc_mode(TIM1, TIM_OC2, TIM_CCMR1_OC2M_FORCE_LOW);
   //  timer_set_oc_mode(TIM1, TIM_OC2, TIM_OCM_PWM2);
 //
-    // toggle led
-//    led_off(); delay_us(2);led_on(); delay_us(2);
-//    led_off(); delay_us(2);led_on(); delay_us(2);
-delay_us(1);
     led_off();
-    //debug("DMA IRQ EXIT\n");
+//    led_off(); delay_us(2);led_on(); delay_us(2);
+//    led_off(); delay_us(2);led_on(); delay_us(2);
 
-    //debug("AFTER "); debug_put_hex32( SPI_CR1(SPI1)); debug_put_newline();
 }
 
 static void video_init_spi_dma(void) {
@@ -320,7 +342,7 @@ static void video_init_spi_dma(void) {
     dma_set_priority(VIDEO_DMA_WHITE, DMA_CHANNEL3, DMA_CCR_PL_VERY_HIGH);
 
     // enable tx complete int
-    //dma_enable_transfer_complete_interrupt(VIDEO_DMA_WHITE, DMA_CHANNEL3);  // OK
+    dma_enable_transfer_complete_interrupt(VIDEO_DMA_WHITE, DMA_CHANNEL3);
 
 
     // start with clean init
@@ -352,28 +374,11 @@ static void video_init_spi_dma(void) {
 
     debug("BEFORE "); debug_put_hex32( SPI_CR1(SPI1)); debug_put_newline();
     // enable tx complete int
-    dma_enable_transfer_complete_interrupt(VIDEO_DMA_WHITE, DMA_CHANNEL2);  // OK
+    //dma_enable_transfer_complete_interrupt(VIDEO_DMA_WHITE, DMA_CHANNEL2);  // OK
 
 }
 
-void video_dma_prepare(uint8_t page) {
-    // debug_function_call();
-
-
-    //TIM2_CNT = 0;
-    //timer_set_oc_mode(TIM1, TIM_OC2, TIM_CCMR1_OC2M_FORCE_LOW);
-
-    //video_dma_trigger();
-    // prepare line data transfer
-    // set oc match to start of line data
-    //timer_disable_preload(TIM1);
-    //timer_disable_preload(TIM2);
-
-    // set mode to toggle on compare match (was low -> will get high)
-    //timer_set_oc_mode(TIM1, TIM_OC2, TIM_CCMR1_OCM_PWM2); //TOGGLE);
-    //timer_set_oc_mode(TIM1, TIM_OC2, TIM_OCM_PWM2);
-    //timer_set_oc_mode(TIM1, TIM_OC2, TIM_OCM_PWM2);
-
+void video_dma_prepare() {
     // disable dma during config
     dma_disable_channel(VIDEO_DMA_WHITE, DMA_CHANNEL2);
     dma_disable_channel(VIDEO_DMA_WHITE, DMA_CHANNEL3);
@@ -384,9 +389,14 @@ void video_dma_prepare(uint8_t page) {
     dma_set_number_of_data(VIDEO_DMA_WHITE, DMA_CHANNEL2, 1);
 
 
+    // prepare next page:
+    video_buffer_fill_request = video_buffer_page;
+    video_buffer_page         = 1 - video_buffer_page;
+
     // prepare to send dma spi data
-    dma_set_memory_address(VIDEO_DMA_WHITE, DMA_CHANNEL3, (uint32_t)&(video_buffer[page]));
+    dma_set_memory_address(VIDEO_DMA_WHITE, DMA_CHANNEL3, (uint32_t)&(video_buffer[video_buffer_page]));
     dma_set_number_of_data(VIDEO_DMA_WHITE, DMA_CHANNEL3, VIDEO_BUFFER_WIDTH);
+
 
     // clear all dma if
     //dma_clear_interrupt_flags(VIDEO_DMA_WHITE, VIDEO_DMA_CHANNEL_WHITE, DMA_TCIF);
@@ -661,7 +671,7 @@ void ADC_COMP_IRQHandler(void) {
 
             led_on();
             //debug_put_uint16((current_compare_value + _US_TO_CLOCKS(10)) - TIM1_CNT ); debug_put_newline();
-            video_dma_prepare(0);
+            video_dma_prepare();
             //spi_enable_tx_dma(SPI1);
 
             timer_set_oc_value(TIM1, TIM_OC1, current_compare_value + _US_TO_CLOCKS(14));
