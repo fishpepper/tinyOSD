@@ -48,6 +48,7 @@ static void video_init_comparator(void);
 static void video_init_comparator_interrupt(void);
 static void video_init_dac(void);
 static void video_init_spi(void);
+static void video_init_spi_single(uint32_t spi);
 static void video_init_spi_dma(void);
 static void video_init_pendsv(void);
 
@@ -59,6 +60,7 @@ static void video_set_dac_value_raw(uint16_t target);
 
 #define VIDEO_BUFFER_WIDTH 70
 volatile uint8_t video_buffer[2][VIDEO_BUFFER_WIDTH+1];
+volatile uint8_t video_buffer_b[2][VIDEO_BUFFER_WIDTH+1];
 
 volatile uint32_t video_dbg;
 volatile uint32_t video_line;
@@ -66,6 +68,7 @@ volatile uint32_t video_field;
 volatile uint16_t video_sync_last_compare_value;
 
 volatile uint32_t video_spi_cr_trigger;
+volatile uint32_t video_spi_cr_trigger_b;
 
 
 volatile uint32_t video_buffer_fill_request;
@@ -75,8 +78,8 @@ volatile uint32_t video_buffer_page;
 
 // void TIM1_CC_IRQHandler(void) {
 void TIM1_CC_IRQHandler(void) {
-    if (timer_get_flag(TIM1, TIM_SR_CC1IF)) {
-        timer_clear_flag(TIM1, TIM_SR_CC1IF);
+    if (timer_get_flag(TIM1, TIM_SR_CC4IF)) {
+        timer_clear_flag(TIM1, TIM_SR_CC4IF);
         //timer_disable_irq(TIM1, TIM_DIER_CC2IE);
         //while(1) led_toggle();
        // led_toggle();
@@ -105,6 +108,16 @@ void video_init(void) {
     debug_function_call();
 
     // uint16_t tmp = 0;
+
+    for(uint8_t i=0; i<VIDEO_BUFFER_WIDTH-1; i++) {
+        video_buffer[0][i] = 0;
+        video_buffer[1][i] = 0;
+
+        video_buffer_b[0][i] = 0xFF;
+        video_buffer_b[0][i] = 0xFF;
+    }
+
+
 
     video_init_rcc();
     video_init_gpio();
@@ -144,10 +157,6 @@ void video_init(void) {
 
     led_off();
 
-    for(uint8_t i=0; i<VIDEO_BUFFER_WIDTH-1; i++) {
-        video_buffer[0][i] = 0;
-        video_buffer[1][i] = 0;
-    }
 
     video_dma_prepare();
 
@@ -162,6 +171,24 @@ uint8_t *video_buffer_ptr;
 
 uint32_t ani_count = 0;
 uint32_t ani_dir   = 0;
+
+video_buffer_b[0][VIDEO_BUFFER_WIDTH/2] = 0;
+video_buffer_b[1][VIDEO_BUFFER_WIDTH/2] = 0;
+
+for (uint32_t i= 0; i<2; i++){
+    for (uint32_t j= 0; j<2; j++){
+video_buffer_b[i][j] = 0x38;
+
+video_buffer[i][j] = 0x38;
+    }
+}
+
+while(1){
+    video_dma_prepare();
+ //spi_enable_tx_dma(SPI2);
+ //spi_enable_tx_dma(SPI1);
+ delay_us(10*1000);
+}
 
 while(1){
 
@@ -290,6 +317,11 @@ static void video_init_pendsv(void) {
 }
 
 static void video_init_spi(void) {
+    video_init_spi_single(VIDEO_SPI_WHITE);
+    video_init_spi_single(VIDEO_SPI_BLACK);
+}
+
+static void video_init_spi_single(uint32_t spi) {
     debug_function_call();
 
     // SPI NVIC
@@ -297,7 +329,7 @@ static void video_init_spi(void) {
     // nvic_enable_irq(NVIC_SPI2_IRQ);
 
     // clean start
-    spi_reset(VIDEO_SPI_WHITE);
+    spi_reset(spi);
 
     // set up spi
     // - master mode
@@ -306,7 +338,7 @@ static void video_init_spi(void) {
     // - CPHA 1
     // - 8 bit crc (?)
     // - MSB first
-    spi_init_master(VIDEO_SPI_WHITE,
+    spi_init_master(spi,
                     SPI_CR1_BAUDRATE_FPCLK_DIV_2,
                     SPI_CR1_CPOL_CLK_TO_0_WHEN_IDLE,
                     SPI_CR1_CPHA_CLK_TRANSITION_1,
@@ -316,14 +348,22 @@ static void video_init_spi(void) {
     // set NSS to software
     // NOTE: setting NSS high is important! even when controling it on our
     //       own. otherwise spi will not send any data!
-    spi_enable_software_slave_management(VIDEO_SPI_WHITE);
-    spi_set_nss_high(VIDEO_SPI_WHITE);
+    spi_enable_software_slave_management(spi);
+    spi_set_nss_high(spi);
 
     // Enable SPI periph
-    spi_enable(VIDEO_SPI_WHITE);
+    spi_enable(spi);
 
     // set fifo to quarter full(=1 byte)
-    spi_fifo_reception_threshold_8bit(VIDEO_SPI_WHITE);
+    spi_fifo_reception_threshold_8bit(spi);
+}
+
+
+void DMA1_CHANNEL4_5_IRQHandler(void) {
+    // clear flag
+    dma_clear_interrupt_flags(VIDEO_DMA_WHITE, DMA_CHANNEL4, DMA_TCIF);
+    dma_clear_interrupt_flags(VIDEO_DMA_WHITE, DMA_CHANNEL5, DMA_TCIF);
+    led_toggle();
 }
 
 void DMA1_CHANNEL2_3_IRQHandler(void) {
@@ -340,17 +380,26 @@ static void video_init_spi_dma(void) {
     // start disabled
     dma_disable_channel(VIDEO_DMA_WHITE, DMA_CHANNEL2);
     dma_disable_channel(VIDEO_DMA_WHITE, DMA_CHANNEL3);
+    dma_disable_channel(VIDEO_DMA_WHITE, DMA_CHANNEL4);
+    dma_disable_channel(VIDEO_DMA_WHITE, DMA_CHANNEL5);
 
-
-    // TIM1_CH1 / DMA CH2
+    // TIM1_CH1 = DMA CH2
     // -> write SPI  SPI_CR2(spi) |= SPI_CR2_TXDMAEN
     // this will initiate SPI transfer using DMA CH3
 
+    // TIM1_CH4 = DMA CH4
+    // write SPI txdma
+    // this will initiate SPI tx on DMA CH5
 
-    // DMA NVIC
+    // SPI CH3 -> WHITE pixel
     nvic_set_priority(NVIC_DMA1_CHANNEL2_3_IRQ, NVIC_PRIO_DMA1);
     nvic_enable_irq(NVIC_DMA1_CHANNEL2_3_IRQ); //
+    // SPI CH5 -> BLACK pixel
+    nvic_set_priority(NVIC_DMA1_CHANNEL4_5_IRQ, NVIC_PRIO_DMA1);
+    nvic_enable_irq(NVIC_DMA1_CHANNEL4_5_IRQ); //
 
+
+    /***********************************************************/
 
     // start with clean init
     dma_channel_reset(VIDEO_DMA_WHITE, DMA_CHANNEL3);
@@ -378,8 +427,41 @@ static void video_init_spi_dma(void) {
     dma_set_priority(VIDEO_DMA_WHITE, DMA_CHANNEL3, DMA_CCR_PL_VERY_HIGH);
 
     // enable tx complete int
-    dma_enable_transfer_complete_interrupt(VIDEO_DMA_WHITE, DMA_CHANNEL3);
+    // DO NOT USE INT dma_enable_transfer_complete_interrupt(VIDEO_DMA_WHITE, DMA_CHANNEL3);
 
+
+
+
+    // start with clean init
+    dma_channel_reset(VIDEO_DMA_WHITE, DMA_CHANNEL5);
+
+    // source and destination size
+    dma_set_memory_size(VIDEO_DMA_WHITE, DMA_CHANNEL5, DMA_CCR_MSIZE_8BIT);
+    dma_set_peripheral_size(VIDEO_DMA_WHITE, DMA_CHANNEL5, DMA_CCR_PSIZE_8BIT);
+
+    // auto memory destination increment mode
+    dma_enable_memory_increment_mode(VIDEO_DMA_WHITE, DMA_CHANNEL5);
+    // source address increment disable
+    dma_disable_peripheral_increment_mode(VIDEO_DMA_WHITE, DMA_CHANNEL5);
+
+    // Location assigned to peripheral register will be target
+    dma_set_read_from_memory(VIDEO_DMA_WHITE, DMA_CHANNEL5);
+
+    // source and destination start addresses
+    dma_set_peripheral_address(VIDEO_DMA_WHITE, DMA_CHANNEL5, (uint32_t)&(SPI_DR(VIDEO_SPI_BLACK)));
+    dma_set_memory_address(VIDEO_DMA_WHITE, DMA_CHANNEL5, (uint32_t)&(video_buffer_b[0]));
+
+    // write full len
+    dma_set_number_of_data(VIDEO_DMA_WHITE, DMA_CHANNEL5, VIDEO_BUFFER_WIDTH);
+
+    // very high DMA_CHANNEL3
+    dma_set_priority(VIDEO_DMA_WHITE, DMA_CHANNEL5, DMA_CCR_PL_VERY_HIGH);
+
+    // enable tx complete int
+    dma_enable_transfer_complete_interrupt(VIDEO_DMA_WHITE, DMA_CHANNEL5);
+
+
+    /***********************************************************/
 
     // start with clean init
     dma_channel_reset(VIDEO_DMA_WHITE, DMA_CHANNEL2);
@@ -400,7 +482,7 @@ static void video_init_spi_dma(void) {
     dma_set_peripheral_address(VIDEO_DMA_WHITE, DMA_CHANNEL2, (uint32_t)&(SPI_CR2(VIDEO_SPI_WHITE)));
 
     //dma write will trigger SPI dma
-    video_spi_cr_trigger = SPI_CR2(SPI1) | SPI_CR2_TXDMAEN;
+    video_spi_cr_trigger = SPI_CR2(VIDEO_SPI_WHITE) | SPI_CR2_TXDMAEN;
     dma_set_memory_address(VIDEO_DMA_WHITE, DMA_CHANNEL2, (uint32_t)&(video_spi_cr_trigger));
 
     // single word write
@@ -408,22 +490,52 @@ static void video_init_spi_dma(void) {
     // very high prio
     dma_set_priority(VIDEO_DMA_WHITE, DMA_CHANNEL2, DMA_CCR_PL_VERY_HIGH);
 
-    debug("BEFORE "); debug_put_hex32( SPI_CR1(SPI1)); debug_put_newline();
-    // enable tx complete int
-    //dma_enable_transfer_complete_interrupt(VIDEO_DMA_WHITE, DMA_CHANNEL2);  // OK
 
+
+    // start with clean init
+    dma_channel_reset(VIDEO_DMA_WHITE, DMA_CHANNEL4);
+
+    // source and destination size
+    dma_set_memory_size(VIDEO_DMA_WHITE, DMA_CHANNEL4, DMA_CCR_MSIZE_32BIT);
+    dma_set_peripheral_size(VIDEO_DMA_WHITE, DMA_CHANNEL4, DMA_CCR_PSIZE_32BIT);
+
+    // memory destination increment disable
+    dma_disable_memory_increment_mode(VIDEO_DMA_WHITE, DMA_CHANNEL4);
+    // source address increment disable
+    dma_disable_peripheral_increment_mode(VIDEO_DMA_WHITE, DMA_CHANNEL4);
+
+    // Location assigned to peripheral register will be target
+    dma_set_read_from_memory(VIDEO_DMA_WHITE, DMA_CHANNEL4);
+
+    // source and destination start addresses
+    dma_set_peripheral_address(VIDEO_DMA_WHITE, DMA_CHANNEL4, (uint32_t)&(SPI_CR2(VIDEO_SPI_BLACK)));
+
+    //dma write will trigger SPI dma
+    video_spi_cr_trigger_b = SPI_CR2(VIDEO_SPI_BLACK) | SPI_CR2_TXDMAEN;
+    dma_set_memory_address(VIDEO_DMA_WHITE, DMA_CHANNEL4, (uint32_t)&(video_spi_cr_trigger_b));
+
+    // single word write
+    dma_set_number_of_data(VIDEO_DMA_WHITE, DMA_CHANNEL4, 1);
+    // very high prio
+    dma_set_priority(VIDEO_DMA_WHITE, DMA_CHANNEL4, DMA_CCR_PL_VERY_HIGH);
 }
 
 void video_dma_prepare() {
     // disable dma during config
     dma_disable_channel(VIDEO_DMA_WHITE, DMA_CHANNEL2);
     dma_disable_channel(VIDEO_DMA_WHITE, DMA_CHANNEL3);
+    dma_disable_channel(VIDEO_DMA_WHITE, DMA_CHANNEL4);
+    dma_disable_channel(VIDEO_DMA_WHITE, DMA_CHANNEL5);
+
 
     // prepare to send tx trigger
-    video_spi_cr_trigger = SPI_CR2(SPI1) | SPI_CR2_TXDMAEN;
+    /*video_spi_cr_trigger = SPI_CR2(SPI1) | SPI_CR2_TXDMAEN;
     dma_set_memory_address(VIDEO_DMA_WHITE, DMA_CHANNEL2, (uint32_t)&(video_spi_cr_trigger));
-    dma_set_number_of_data(VIDEO_DMA_WHITE, DMA_CHANNEL2, 1);
+    dma_set_number_of_data(VIDEO_DMA_WHITE, DMA_CHANNEL2, 1);*/
 
+    //video_spi_cr_trigger_b = SPI_CR2(SPI1) | SPI_CR2_TXDMAEN;
+    //dma_set_memory_address(VIDEO_DMA_WHITE, DMA_CHANNEL4, (uint32_t)&(video_spi_cr_trigger_b));
+    //dma_set_number_of_data(VIDEO_DMA_WHITE, DMA_CHANNEL4, 1);
 
     // prepare next page:
     video_buffer_fill_request = video_buffer_page;
@@ -431,7 +543,13 @@ void video_dma_prepare() {
 
     // prepare to send dma spi data
     dma_set_memory_address(VIDEO_DMA_WHITE, DMA_CHANNEL3, (uint32_t)&(video_buffer[video_buffer_page]));
-    dma_set_number_of_data(VIDEO_DMA_WHITE, DMA_CHANNEL3, VIDEO_BUFFER_WIDTH);
+    dma_set_number_of_data(VIDEO_DMA_WHITE, DMA_CHANNEL3, 4);
+
+    dma_set_memory_address(VIDEO_DMA_WHITE, DMA_CHANNEL5, (uint32_t)&(video_buffer_b[video_buffer_page]));
+    dma_set_number_of_data(VIDEO_DMA_WHITE, DMA_CHANNEL5, 4);
+
+    strange, why do i not need reset cr2 triogger?! why does some numbers work as bars, some txcount do not?!
+                                                                                                            mutli trigger?
 
 
     // clear all dma if
@@ -444,6 +562,9 @@ void video_dma_prepare() {
     // enable dma channel
     dma_enable_channel(VIDEO_DMA_WHITE, DMA_CHANNEL3);
     dma_enable_channel(VIDEO_DMA_WHITE, DMA_CHANNEL2);
+
+    dma_enable_channel(VIDEO_DMA_WHITE, DMA_CHANNEL5);
+    dma_enable_channel(VIDEO_DMA_WHITE, DMA_CHANNEL4);
 }
 
 #if 0
@@ -531,9 +652,11 @@ static void video_init_rcc(void) {
 
     // peripheral clocks enable
     rcc_periph_clock_enable(GPIO_RCC(VIDEO_GPIO));
+    rcc_periph_clock_enable(GPIO_RCC(VIDEO_GPIO_BLACK));
 
     // spi
     rcc_periph_clock_enable(VIDEO_SPI_WHITE_RCC);
+    rcc_periph_clock_enable(VIDEO_SPI_BLACK_RCC);
 
     // enable DMA Peripheral Clock
     rcc_periph_clock_enable(RCC_DMA);
@@ -555,6 +678,15 @@ static void video_init_gpio(void) {
     // set mode
     gpio_mode_setup(VIDEO_GPIO, GPIO_MODE_AF, GPIO_PUPD_NONE, spi_gpios);
     gpio_set_output_options(VIDEO_GPIO, GPIO_OTYPE_PP, GPIO_OSPEED_50MHZ, spi_gpios);
+    gpio_set(VIDEO_GPIO, GPIO7);
+
+    // set spi to output
+    // init sck (13, for dbg), MOSI (15)
+    spi_gpios = GPIO15 | GPIO13;
+    // set mode
+    gpio_mode_setup(VIDEO_GPIO_BLACK, GPIO_MODE_AF, GPIO_PUPD_NONE, spi_gpios);
+    gpio_set_output_options(VIDEO_GPIO_BLACK, GPIO_OTYPE_PP, GPIO_OSPEED_50MHZ, spi_gpios);
+    gpio_set(VIDEO_GPIO_BLACK, GPIO15);
 }
 
 static void video_init_comparator(void) {
@@ -622,6 +754,7 @@ static void video_init_timer(void) {
 
     timer_set_dma_on_compare_event(TIM1);
     timer_disable_oc_preload(TIM1, TIM_OC1);
+    timer_disable_oc_preload(TIM1, TIM_OC4);
 
     // line frequency
     // NTSC (color) 15734 Hz = 63.56 us per line
@@ -638,7 +771,7 @@ static void video_init_timer(void) {
     timer_set_period(TIM1, 0xFFFF);
 
     // enable DMA trigger to ch1
-    timer_enable_irq(TIM1, TIM_DIER_CC1DE);
+    timer_enable_irq(TIM1, TIM_DIER_CC1DE | TIM_DIER_CC4DE);
 
     // start timer 1
     timer_enable_counter(TIM1);
@@ -705,12 +838,12 @@ void ADC_COMP_IRQHandler(void) {
           //  dma_disable_channel(VIDEO_DMA_WHITE, VIDEO_DMA_CHANNEL_WHITE);
             // video_dma_trigger();
 
-            led_on();
+           // led_on();
             //debug_put_uint16((current_compare_value + _US_TO_CLOCKS(10)) - TIM1_CNT ); debug_put_newline();
-            video_dma_prepare();
-            //spi_enable_tx_dma(SPI1);
+               video_dma_prepare();
 
             timer_set_oc_value(TIM1, TIM_OC1, current_compare_value + _US_TO_CLOCKS(14));
+            timer_set_oc_value(TIM1, TIM_OC4, current_compare_value + _US_TO_CLOCKS(14));
 
 
             // TX: transfer buffer to slave
