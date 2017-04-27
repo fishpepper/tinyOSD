@@ -32,6 +32,7 @@
 #define VIDEO_SPI_BLACK_RCC       RCC_SPI2
 
 #define VIDEO_DMA_WHITE         DMA1
+#define VIDEO_DMA_BLACK         DMA1
 #define VIDEO_DMA_CHANNEL_WHITE DMA_CHANNEL3
 
 
