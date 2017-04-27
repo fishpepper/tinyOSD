@@ -58,7 +58,7 @@ static void video_dma_trigger(void);
 static void video_set_dac_value_mv(uint16_t target);
 static void video_set_dac_value_raw(uint16_t target);
 
-#define VIDEO_BUFFER_WIDTH 60
+#define VIDEO_BUFFER_WIDTH 50
 volatile uint8_t video_buffer[2][VIDEO_BUFFER_WIDTH+1];
 volatile uint8_t video_buffer_b[2][VIDEO_BUFFER_WIDTH+1];
 
@@ -132,7 +132,7 @@ void video_init(void) {
     video_init_spi();
     video_init_spi_dma();
 
-    video_set_dac_value_mv(100);
+    video_set_dac_value_mv(80);
 
     video_init_timer();
 
@@ -466,7 +466,7 @@ static void video_init_spi_dma(void) {
     dma_set_priority(VIDEO_DMA_BLACK, DMA_CHANNEL5, DMA_CCR_PL_VERY_HIGH);
 
     // enable tx complete int
-    dma_enable_transfer_complete_interrupt(VIDEO_DMA_BLACK, DMA_CHANNEL5);
+    //dma_enable_transfer_complete_interrupt(VIDEO_DMA_BLACK, DMA_CHANNEL5);
 
 
     /***********************************************************/
@@ -531,6 +531,7 @@ static void video_init_spi_dma(void) {
 void video_dma_prepare() {
     led_on();
 
+
     // disable dma during config
     DMA_CCR(VIDEO_DMA_WHITE, DMA_CHANNEL2) &= ~DMA_CCR_EN;
     DMA_CCR(VIDEO_DMA_WHITE, DMA_CHANNEL3) &= ~DMA_CCR_EN;
@@ -538,14 +539,18 @@ void video_dma_prepare() {
     DMA_CCR(VIDEO_DMA_BLACK, DMA_CHANNEL5) &= ~DMA_CCR_EN;
 
 
+    //clear pending dma transfers
+    SPI_CR2(SPI1) &= ~SPI_CR2_TXDMAEN;
+    SPI_CR2(SPI2) &= ~SPI_CR2_TXDMAEN;
+
     // prepare to send tx trigger
-    /*video_spi_cr_trigger = SPI_CR2(SPI1) | SPI_CR2_TXDMAEN;
-    dma_set_memory_address(VIDEO_DMA_WHITE, DMA_CHANNEL2, (uint32_t)&(video_spi_cr_trigger));
-    dma_set_number_of_data(VIDEO_DMA_WHITE, DMA_CHANNEL2, 1);*/
+    //video_spi_cr_trigger = SPI_CR2(SPI1) | SPI_CR2_TXDMAEN;
+    //dma_set_memory_address(VIDEO_DMA_WHITE, DMA_CHANNEL2, (uint32_t)&(video_spi_cr_trigger));
+    dma_set_number_of_data(VIDEO_DMA_WHITE, DMA_CHANNEL2, 1);
 
     //video_spi_cr_trigger_b = SPI_CR2(SPI1) | SPI_CR2_TXDMAEN;
     //dma_set_memory_address(VIDEO_DMA_WHITE, DMA_CHANNEL4, (uint32_t)&(video_spi_cr_trigger_b));
-    //dma_set_number_of_data(VIDEO_DMA_WHITE, DMA_CHANNEL4, 1);
+    dma_set_number_of_data(VIDEO_DMA_WHITE, DMA_CHANNEL4, 1);
 
     // prepare next page:
     video_buffer_fill_request = video_buffer_page;
@@ -567,8 +572,9 @@ void video_dma_prepare() {
     // clear pending dma request from timer
 
     // disable and re-enable DMA on timer match in order to clear pending timer triggers
+    TIM_SR(TIM1) = ~(TIM1, TIM_SR_CC1IF | TIM_SR_CC4IF); // timer_clear_flag(TIM1, TIM_SR_CC1IF | TIM_SR_CC4IF);
     TIM_DIER(TIM1) &= ~(TIM_DIER_CC1DE | TIM_DIER_CC4DE);  // = timer_disable_irq(TIM1, TIM_DIER_CC1DE | TIM_DIER_CC4DE);
-    //TIM_SR(TIM1) = ~(TIM1, TIM_SR_CC1IF | TIM_SR_CC4IF); // timer_clear_flag(TIM1, TIM_SR_CC1IF | TIM_SR_CC4IF);
+    TIM_DIER(TIM1) |=  (TIM_DIER_CC1DE | TIM_DIER_CC4DE | TIM_DIER_CC4IE);  // = timer_enable_irq(TIM1, TIM_DIER_CC1DE | TIM_DIER_CC4DE);
 
 
     // enable dma channel
@@ -578,7 +584,7 @@ void video_dma_prepare() {
     DMA_CCR(VIDEO_DMA_BLACK, DMA_CHANNEL4) |= DMA_CCR_EN;
     DMA_CCR(VIDEO_DMA_BLACK, DMA_CHANNEL5) |= DMA_CCR_EN;
 
-    TIM_DIER(TIM1) |=  (TIM_DIER_CC1DE | TIM_DIER_CC4DE | TIM_DIER_CC4IE);  // = timer_enable_irq(TIM1, TIM_DIER_CC1DE | TIM_DIER_CC4DE);
+    //TIM_DIER(TIM1) |=  TIM_DIER_CC4IE;  // = timer_enable_irq(TIM1, TIM_DIER_CC1DE | TIM_DIER_CC4DE);
     led_off();
 
 }
@@ -787,7 +793,7 @@ static void video_init_timer(void) {
     timer_set_period(TIM1, 0xFFFF);
 
     // enable DMA trigger to ch1
-    timer_enable_irq(TIM1, TIM_DIER_CC1DE | TIM_DIER_CC4DE);
+    //timer_enable_irq(TIM1, TIM_DIER_CC1DE | TIM_DIER_CC4DE);
 
     // DMA on compare event
     timer_set_dma_on_compare_event(TIM1);
@@ -810,6 +816,7 @@ static void video_init_comparator_interrupt(void) {
 }
 
 void ADC_COMP_IRQHandler(void) {
+
     // well, this irq is only called on comp interrupts -> skip checking...
     // if (exti_get_flag_status(VIDEO_COMP_EXTI_SOURCE_LINE) != 0) {
     // clear flag
@@ -852,21 +859,20 @@ void ADC_COMP_IRQHandler(void) {
         } else if (pulse_len < VIDEO_SYNC_HSYNC_MAX) {
             // this is longer than a short sync and not a broad sync
 
-            // increment video field
-            video_line += 2;
-
           //  dma_disable_channel(VIDEO_DMA_WHITE, VIDEO_DMA_CHANNEL_WHITE);
             // video_dma_trigger();
 
-           // led_on();
             //debug_put_uint16((current_compare_value + _US_TO_CLOCKS(10)) - TIM1_CNT ); debug_put_newline();
+            current_compare_value += _US_TO_CLOCKS(14);
 
-            timer_set_oc_value(TIM1, TIM_OC1, current_compare_value + _US_TO_CLOCKS(9));
-            timer_set_oc_value(TIM1, TIM_OC4, current_compare_value + _US_TO_CLOCKS(9));
-
+            //uint32_t ccval = current_compare_value +100; // _US_TO_CLOCKS(15);
+            TIM_CCR1(TIM1) = current_compare_value;
+            TIM_CCR4(TIM1) = current_compare_value;
 
             video_dma_prepare();
 
+            // increment video field
+            video_line += 2;
 
             // TX: transfer buffer to slave
             //dma_set_memory_address(VIDEO_DMA_WHITE, VIDEO_DMA_CHANNEL_WHITE, (uint32_t)video_buffer[0]);
