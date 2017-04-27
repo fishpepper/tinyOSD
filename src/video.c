@@ -861,8 +861,8 @@ void ADC_COMP_IRQHandler(void) {
            // led_on();
             //debug_put_uint16((current_compare_value + _US_TO_CLOCKS(10)) - TIM1_CNT ); debug_put_newline();
 
-            timer_set_oc_value(TIM1, TIM_OC1, current_compare_value + _US_TO_CLOCKS(14));
-            timer_set_oc_value(TIM1, TIM_OC4, current_compare_value + _US_TO_CLOCKS(14));
+            timer_set_oc_value(TIM1, TIM_OC1, current_compare_value + _US_TO_CLOCKS(9));
+            timer_set_oc_value(TIM1, TIM_OC4, current_compare_value + _US_TO_CLOCKS(9));
 
 
             video_dma_prepare();
