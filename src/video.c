@@ -215,17 +215,16 @@ while(1){
         logo_start_line = 625/2 - (scale * LOGO_HEIGHT/2) / 100;
         logo_end_line   = 625/2 + (scale * LOGO_HEIGHT/2) / 100;
 
-        if ((line > logo_start_line) && (line < logo_end_line)){
 
-            logo_offset = (line - logo_start_line) * 100 / scale * (LOGO_WIDTH/8); // - col;
+        // fill the next line of data now:
+        for(uint8_t col = 0; col < 2; col++){
+            // [0] = white, [1] = black data
+            // fetch correct buffer ptr
+            video_buffer_ptr     = &video_buffer[col][video_buffer_fill_request][0];
+            video_buffer_end_ptr = &video_buffer[col][video_buffer_fill_request][VIDEO_BUFFER_WIDTH];
 
-            // fill the next line of data now:
-            for(uint8_t col = 0; col < 2; col++){
-                // [0] = white, [1] = black data
-                // fetch correct buffer ptr
-                video_buffer_ptr     = &video_buffer[col][video_buffer_fill_request][0];
-                video_buffer_end_ptr = &video_buffer[col][video_buffer_fill_request][VIDEO_BUFFER_WIDTH];
-
+            if ((line > logo_start_line) && (line < logo_end_line)){
+                logo_offset = (line - logo_start_line) * 100 / scale * (LOGO_WIDTH/8); // - col;
 
                 if (ani_dir) {
                     logo_ptr = &logo_data[col][logo_offset];
@@ -255,11 +254,11 @@ while(1){
                 while(video_buffer_ptr < video_buffer_end_ptr){
                     *video_buffer_ptr++ = 0;
                 }
-            }
-        }else{
-            // no image data region
-            for(uint32_t x = 0; x < VIDEO_BUFFER_WIDTH-1; x++){
-               *video_buffer_ptr++ = 0;
+            }else{
+                // no image data region
+                for(uint32_t x = 0; x < VIDEO_BUFFER_WIDTH-1; x++){
+                   *video_buffer_ptr++ = 0;
+                }
             }
         }
 
