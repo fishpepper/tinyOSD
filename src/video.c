@@ -58,7 +58,7 @@ static void video_dma_trigger(void);
 static void video_set_dac_value_mv(uint16_t target);
 static void video_set_dac_value_raw(uint16_t target);
 
-#define VIDEO_BUFFER_WIDTH 60
+#define VIDEO_BUFFER_WIDTH 60 //66 // max should be ~68
 volatile uint8_t video_buffer[2][2][VIDEO_BUFFER_WIDTH+1];
 
 volatile uint32_t video_dbg;
@@ -77,12 +77,12 @@ volatile uint32_t video_buffer_page;
 
 // void TIM1_CC_IRQHandler(void) {
 void TIM1_CC_IRQHandler(void) {
-    if (timer_get_flag(TIM1, TIM_SR_CC4IF)) {
-        timer_clear_flag(TIM1, TIM_SR_CC4IF);
+    if (TIMER_GET_FLAG(TIM1, TIM_SR_CC4IF)) {
+        TIMER_CLEAR_FLAG(TIM1, TIM_SR_CC4IF);
         //timer_disable_irq(TIM1, TIM_DIER_CC2IE);
         //while(1) led_toggle();
        led_toggle();
-       delay_us(1);
+       //delay_us(1);
        led_toggle();
        //video_dma_prepare();
         //debug("CC MATCH\n");
@@ -214,6 +214,7 @@ while(1){
 
         logo_start_line = 625/2 - (scale * LOGO_HEIGHT/2) / 100;
         logo_end_line   = 625/2 + (scale * LOGO_HEIGHT/2) / 100;
+        logo_offset = (line - logo_start_line) * 100 / scale * (LOGO_WIDTH/8); // - col;
 
 
         // fill the next line of data now:
@@ -224,7 +225,6 @@ while(1){
             video_buffer_end_ptr = &video_buffer[col][video_buffer_fill_request][VIDEO_BUFFER_WIDTH];
 
             if ((line > logo_start_line) && (line < logo_end_line)){
-                logo_offset = (line - logo_start_line) * 100 / scale * (LOGO_WIDTH/8); // - col;
 
                 if (ani_dir) {
                     logo_ptr = &logo_data[col][logo_offset];
@@ -236,6 +236,7 @@ while(1){
                     *video_buffer_ptr++ = 0x0;
                 }
                 uint32_t max_len = min((LOGO_WIDTH/8), (VIDEO_BUFFER_WIDTH - logo_offset_x));
+
                 for(uint32_t i = 0; i < max_len; i++){
                    *video_buffer_ptr++ = *logo_ptr++;
                 }
@@ -250,17 +251,20 @@ while(1){
                     video_buffer[1][video_buffer_fill_request][0] = 0xFF;
                 }
 
-
                 while(video_buffer_ptr < video_buffer_end_ptr){
-                    *video_buffer_ptr++ = 0;
+                    *video_buffer_ptr++ = 0x0;
                 }
+
+                //video_buffer[col][video_buffer_fill_request][40-1] = 0xfF;
+
             }else{
                 // no image data region
                 for(uint32_t x = 0; x < VIDEO_BUFFER_WIDTH-1; x++){
-                   *video_buffer_ptr++ = 0;
+                   *video_buffer_ptr++ = 0x0;
                 }
             }
         }
+
 
         // clear request
         video_buffer_fill_request = VIDEO_BUFFER_FILL_REQUEST_IDLE;

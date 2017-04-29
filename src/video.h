@@ -78,5 +78,6 @@ void video_init(void);
 #define TIMER_CLEAR_FLAG(_tim, _flags) { TIM_SR(_tim) = ~(_flags); }
 #define TIMER_DISABLE_IRQ(_tim, _irqs) { TIM_DIER(_tim) &= ~(_irqs); }
 #define TIMER_ENABLE_IRQ(_tim, _irqs) { TIM_DIER(_tim) |= (_irqs); }
+#define TIMER_GET_FLAG(_tim, _flag) (TIM_SR(_tim) & (_flag))
 
 #endif  // VIDEO_H_
