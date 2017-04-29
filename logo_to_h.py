@@ -60,10 +60,10 @@ for line in fh:
     i = i + 1
 
 image_bytes = [[], []] # white and black bytes
-byte = 0
-byte_count = 0
 
 for col in range(2):
+    byte = 0
+    byte_count = 0
     for bit in imagedata[col]:
         byte = byte << 1
         if (bit != 0):
