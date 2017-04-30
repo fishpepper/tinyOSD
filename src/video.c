@@ -58,8 +58,9 @@ static void video_dma_trigger(void);
 static void video_set_dac_value_mv(uint16_t target);
 static void video_set_dac_value_raw(uint16_t target);
 
-#define VIDEO_BUFFER_WIDTH 60 //66 // max should be ~68
-volatile uint8_t video_buffer[2][2][VIDEO_BUFFER_WIDTH+1];
+#define VIDEO_BUFFER_WIDTH (2*37) //66 // max should be ~68
+//volatile uint8_t video_buffer[2][2][VIDEO_BUFFER_WIDTH+1];
+volatile uint16_t video_buffer[2][2][VIDEO_BUFFER_WIDTH/2];
 
 volatile uint32_t video_dbg;
 volatile uint32_t video_line;
@@ -91,19 +92,18 @@ void TIM1_CC_IRQHandler(void) {
 }
 
 static const uint32_t video_cos_table[90] = {
-    0x64, 0x63, 0x63, 0x63, 0x63, 0x63, 0x63, 0x63,
-    0x63, 0x62, 0x62, 0x62, 0x61, 0x61, 0x61, 0x60,
-    0x60, 0x5f, 0x5f, 0x5e, 0x5d, 0x5d, 0x5c, 0x5c,
-    0x5b, 0x5a, 0x59, 0x59, 0x58, 0x57, 0x56, 0x55,
-    0x54, 0x53, 0x52, 0x51, 0x50, 0x4f, 0x4e, 0x4d,
-    0x4c, 0x4b, 0x4a, 0x49, 0x47, 0x46, 0x45, 0x44,
-    0x42, 0x41, 0x40, 0x3e, 0x3d, 0x3c, 0x3a, 0x39,
-    0x37, 0x36, 0x35, 0x33, 0x32, 0x30, 0x2e, 0x2d,
-    0x2b, 0x2a, 0x28, 0x27, 0x25, 0x23, 0x22, 0x20,
-    0x1e, 0x1d, 0x1b, 0x19, 0x18, 0x16, 0x14, 0x13,
-    0x11, 0xf, 0xd, 0xc, 0xa, 0x8, 0x7, 0x5, 0x3,
-    0x1
-};
+0x80,0x7f,0x7f,0x7f,0x7f,0x7f,0x7f,0x7f,
+0x7e,0x7e,0x7e,0x7d,0x7d,0x7c,0x7c,0x7b,
+0x7b,0x7a,0x79,0x79,0x78,0x77,0x76,0x75,
+0x74,0x74,0x73,0x72,0x71,0x6f,0x6e,0x6d,
+0x6c,0x6b,0x6a,0x68,0x67,0x66,0x64,0x63,
+0x62,0x60,0x5f,0x5d,0x5c,0x5a,0x58,0x57,
+0x55,0x54,0x52,0x50,0x4e,0x4d,0x4b,0x49,
+0x47,0x45,0x43,0x41,0x40,0x3e,0x3c,0x3a,
+0x38,0x36,0x34,0x32,0x30,0x2d,0x2b,0x29,
+0x27,0x25,0x23,0x21,0x1f,0x1c,0x1a,0x18,
+0x16,0x14,0x11,0xf,0xd,0xb,0x9,0x6,
+0x4,0x2};
 
 
 void video_init(void) {
@@ -113,8 +113,8 @@ void video_init(void) {
 
     for(uint8_t col = 0; col < 2; col++) {
         for(uint8_t idx = 0; idx < 2; idx++) {
-            for(uint8_t i=0; i<VIDEO_BUFFER_WIDTH-1; i++) {
-                video_buffer[col][idx][i] = 0x30;
+            for(uint8_t i=0; i<VIDEO_BUFFER_WIDTH/2; i++) {
+                video_buffer[col][idx][i] = 0; //x3030;
             }
         }
     }
@@ -153,7 +153,7 @@ uint32_t logo_start_line = 625/2 - LOGO_HEIGHT/2;
 uint32_t logo_end_line   = 625/2 + LOGO_HEIGHT/2;
 
 uint32_t logo_offset_x;
-if (LOGO_WIDTH/2 >= VIDEO_BUFFER_WIDTH) {
+if (LOGO_WIDTH <= VIDEO_BUFFER_WIDTH) {
     logo_offset_x = 0;
 }else{
     logo_offset_x = VIDEO_BUFFER_WIDTH/2 - LOGO_WIDTH/8/2;
@@ -178,26 +178,30 @@ uint32_t ani_dir   = 0;
 }*/
 
 
-
-for(uint8_t col = 0; col < 2; col++) {
-    for(uint8_t idx = 0; idx < 2; idx++) {
-            video_buffer[col][idx][0] = 0x8F;
-    }
+// TRICK: data is shifted one byte -> dma is triggered 1 byte offset -> no dual sram access requests
+// white data: [byte0] [byte1]....
+// blakc data: [DUMMY] [byte0] [byte1] ....
+/*for(uint8_t idx = 0; idx < 2; idx++) {
+        video_buffer[0][idx][0] = 0x8100;
+        video_buffer[1][idx][0] = 0x0081;
 }
 while(1);
-
+*/
+uint8_t div =0;
 while(1){
 
 
     if (video_buffer_fill_request != VIDEO_BUFFER_FILL_REQUEST_IDLE) {
-
         if (video_line == 2) {
-            ani_count+=4;
-            if (ani_count >=360) {
-                ani_count -= 360;
+            if (div++ >= 0){
+                ani_count+=4;
+                if (ani_count >=360) {
+                    ani_count -= 360;
+                }
+                div = 0;
             }
         }
-        ani_count = 0;
+        //ani_count = 170;
 
         uint32_t scale;
         if (ani_count < 90) {
@@ -221,59 +225,63 @@ while(1){
         // calculate line number:
         uint32_t line    = video_line + 2;
 
-        logo_start_line = 625/2 - (scale * LOGO_HEIGHT/2) / 100;
-        logo_end_line   = 625/2 + (scale * LOGO_HEIGHT/2) / 100;
-        logo_offset = (line - logo_start_line) * 100 / scale * (LOGO_WIDTH/8);
+        logo_start_line = 625/2 - (scale * LOGO_HEIGHT/2) / 128;
+        logo_end_line   = 625/2 + (scale * LOGO_HEIGHT/2) / 128;
 
+        logo_offset = (line - logo_start_line) * 128 / scale * (LOGO_WIDTH/8);
+
+        if (!ani_dir) {
+            // flip on neg rotation
+            logo_offset = LOGO_HEIGHT*LOGO_WIDTH/8 - logo_offset;
+        }
+
+        uint32_t max_len = min((LOGO_WIDTH/8), (VIDEO_BUFFER_WIDTH - logo_offset_x));
+#if 1
 
         // fill the next line of data now:
         for(uint8_t col = 0; col < 2; col++){
+
+            //for(uint8_t i=0; i<VIDEO_BUFFER_WIDTH/2; i++){
+//                video_buffer[col][video_buffer_fill_request][i] = 0x0000;
+//            }
+
             // [0] = white, [1] = black data
             // fetch correct buffer ptr
-            video_buffer_ptr     = &video_buffer[col][video_buffer_fill_request][0];
-            video_buffer_end_ptr = &video_buffer[col][video_buffer_fill_request][VIDEO_BUFFER_WIDTH];
+            video_buffer_ptr     = (uint8_t*) &video_buffer[col][video_buffer_fill_request][0];
+            video_buffer_end_ptr = video_buffer_ptr + VIDEO_BUFFER_WIDTH - 4; //(uint8_t*) &video_buffer[col][video_buffer_fill_request][VIDEO_BUFFER_WIDTH/2-2];
+
+            logo_ptr = &logo_data[col][logo_offset];
+
+            // black data has to be shifted one byte
+            if (!col) video_buffer_ptr++;
+            //video_buffer_ptr += logo_offset_x;
+
 
             if ((line > logo_start_line) && (line < logo_end_line)){
-
-                if (ani_dir) {
-                    logo_ptr = &logo_data[col][logo_offset];
-                } else {
-                    logo_ptr = &logo_data[col][LOGO_HEIGHT*LOGO_WIDTH/8 - logo_offset];
-                }
 
                 for (uint32_t i = 0; i < logo_offset_x; i++){
                     *video_buffer_ptr++ = 0x0;
                 }
-                uint32_t max_len = min((LOGO_WIDTH/8), (VIDEO_BUFFER_WIDTH - logo_offset_x));
 
                 for(uint32_t i = 0; i < max_len; i++){
                    *video_buffer_ptr++ = *logo_ptr++;
                 }
-
-                //white is delayed by 2 bit clocks (caused by dma dual access)
-                //video_buffer[0][video_buffer_fill_request][20] = 0x20;
-                //video_buffer[1][video_buffer_fill_request][20] = 0x80;
-
-                if ((video_line / 8)  & 1){
-                    video_buffer[0][video_buffer_fill_request][0] = 0xFF;
-                }else{
-                    video_buffer[1][video_buffer_fill_request][0] = 0xFF;
-                }
-
-                while(video_buffer_ptr < video_buffer_end_ptr){
-                    *video_buffer_ptr++ = 0x0;
-                }
+NEEDS FURTHER SPEED OPT!
+                //while(video_buffer_ptr < video_buffer_end_ptr){
+                  //  *video_buffer_ptr++ = 0x0;
+                //}
 
                 //video_buffer[col][video_buffer_fill_request][40-1] = 0xfF;
 
             }else{
                 // no image data region
-                for(uint32_t x = 0; x < VIDEO_BUFFER_WIDTH-1; x++){
+                for(uint32_t x = 0; x < VIDEO_BUFFER_WIDTH; x++){
                    *video_buffer_ptr++ = 0x0;
                 }
             }
         }
-
+#endif
+        video_buffer[0][video_buffer_fill_request][VIDEO_BUFFER_WIDTH/2-1] = 0x00FF;
 
         // clear request
         video_buffer_fill_request = VIDEO_BUFFER_FILL_REQUEST_IDLE;
@@ -393,7 +401,7 @@ void DMA1_CHANNEL4_5_IRQHandler(void) {
 
     // prepare to send dma spi data
     DMA_SET_MEMORY_ADDRES_NOCHECK(VIDEO_DMA_BLACK, DMA_CHANNEL5, &(video_buffer[1][video_buffer_page]));
-    DMA_SET_NUMBER_OF_DATA(VIDEO_DMA_BLACK, DMA_CHANNEL5, VIDEO_BUFFER_WIDTH);
+    DMA_SET_NUMBER_OF_DATA(VIDEO_DMA_BLACK, DMA_CHANNEL5, VIDEO_BUFFER_WIDTH/2);
 
     // clear all dma if
     // NOT NECESSARY? move to define if enable is necc...
@@ -427,7 +435,7 @@ void DMA1_CHANNEL2_3_IRQHandler(void) {
 
     // prepare to send dma spi data
     DMA_SET_MEMORY_ADDRES_NOCHECK(VIDEO_DMA_WHITE, DMA_CHANNEL3, &(video_buffer[0][video_buffer_page]));
-    DMA_SET_NUMBER_OF_DATA(VIDEO_DMA_WHITE, DMA_CHANNEL3, VIDEO_BUFFER_WIDTH);
+    DMA_SET_NUMBER_OF_DATA(VIDEO_DMA_WHITE, DMA_CHANNEL3, VIDEO_BUFFER_WIDTH/2);
 
     // clear all dma if
     // NOT NECESSARY? move to define if enable is necc...
@@ -468,8 +476,8 @@ static void video_init_spi_dma(void) {
     dma_channel_reset(VIDEO_DMA_WHITE, DMA_CHANNEL3);
 
     // source and destination size
-    dma_set_memory_size(VIDEO_DMA_WHITE, DMA_CHANNEL3, DMA_CCR_MSIZE_8BIT);
-    dma_set_peripheral_size(VIDEO_DMA_WHITE, DMA_CHANNEL3, DMA_CCR_PSIZE_8BIT);
+    dma_set_memory_size(VIDEO_DMA_WHITE, DMA_CHANNEL3, DMA_CCR_MSIZE_16BIT);
+    dma_set_peripheral_size(VIDEO_DMA_WHITE, DMA_CHANNEL3, DMA_CCR_PSIZE_16BIT);
 
     // auto memory destination increment mode
     dma_enable_memory_increment_mode(VIDEO_DMA_WHITE, DMA_CHANNEL3);
@@ -484,7 +492,7 @@ static void video_init_spi_dma(void) {
     dma_set_memory_address(VIDEO_DMA_WHITE, DMA_CHANNEL3, (uint32_t)&(video_buffer[0][0]));
 
     // write full len
-    dma_set_number_of_data(VIDEO_DMA_WHITE, DMA_CHANNEL3, VIDEO_BUFFER_WIDTH);
+    dma_set_number_of_data(VIDEO_DMA_WHITE, DMA_CHANNEL3, VIDEO_BUFFER_WIDTH/2);
 
     // very high DMA_CHANNEL3
     dma_set_priority(VIDEO_DMA_WHITE, DMA_CHANNEL3, DMA_CCR_PL_VERY_HIGH);
@@ -496,8 +504,8 @@ static void video_init_spi_dma(void) {
     dma_channel_reset(VIDEO_DMA_BLACK, DMA_CHANNEL5);
 
     // source and destination size
-    dma_set_memory_size(VIDEO_DMA_BLACK, DMA_CHANNEL5, DMA_CCR_MSIZE_8BIT);
-    dma_set_peripheral_size(VIDEO_DMA_BLACK, DMA_CHANNEL5, DMA_CCR_PSIZE_8BIT);
+    dma_set_memory_size(VIDEO_DMA_BLACK, DMA_CHANNEL5, DMA_CCR_MSIZE_16BIT);
+    dma_set_peripheral_size(VIDEO_DMA_BLACK, DMA_CHANNEL5, DMA_CCR_PSIZE_16BIT);
 
     // auto memory destination increment mode
     dma_enable_memory_increment_mode(VIDEO_DMA_BLACK, DMA_CHANNEL5);
@@ -512,7 +520,7 @@ static void video_init_spi_dma(void) {
     dma_set_memory_address(VIDEO_DMA_BLACK, DMA_CHANNEL5, (uint32_t)&(video_buffer[1][0]));
 
     // write full len
-    dma_set_number_of_data(VIDEO_DMA_BLACK, DMA_CHANNEL5, VIDEO_BUFFER_WIDTH);
+    dma_set_number_of_data(VIDEO_DMA_BLACK, DMA_CHANNEL5, VIDEO_BUFFER_WIDTH/2);
 
     // very high prio
     dma_set_priority(VIDEO_DMA_BLACK, DMA_CHANNEL5, DMA_CCR_PL_VERY_HIGH);
@@ -864,7 +872,7 @@ void ADC_COMP_IRQHandler(void) {
 
             //uint32_t ccval = current_compare_value +100; // _US_TO_CLOCKS(15);
             TIM_CCR1(TIM1) = current_compare_value; // correct for offset by different dma access time
-            TIM_CCR4(TIM1) = current_compare_value;
+            TIM_CCR4(TIM1) = current_compare_value+32;
 
             led_on();
 

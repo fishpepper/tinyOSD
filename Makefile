@@ -6,7 +6,7 @@ SOURCE_FILES = $(SOURCE_FILES_FOUND:./src/%=%)
 #SOURCE_FILES += eeprom_emulation/st_eeprom.c
 OBJECT_DIR   := $(ROOT)/obj
 BIN_DIR      = $(ROOT)/bin
-CFLAGS  = -O1 -g
+CFLAGS  = -O2 -g
 ASFLAGS = -g
 
 # dfu util path
