@@ -70,14 +70,20 @@ void video_init(void);
 #define VIDEO_SYNC_LO_BROAD       (VIDEO_LINE_LEN / 2.0) - VIDEO_SYNC_HSYNC
 
 // using those macros is a big speedup (no lib calls!)
-#define DMA_SET_NUMBER_OF_DATA(_dma, _ch, _val) { DMA_CNDTR(_dma, _ch) = _val; }
-#define DMA_SET_MEMORY_ADDRES_NOCHECK(_dma, _ch, _address) { DMA_CMAR(_dma, _ch) = (uint32_t) _address; }
-//#define DMA_CLEAR_INTERRUPT_FLAGS()
+#define DMA_SET_NUMBER_OF_DATA(_dma, _ch, _val) { DMA_CNDTR(_dma, _ch) = (_val); }
+#define DMA_SET_MEMORY_ADDRES_NOCHECK(_dma, _ch, _address) { DMA_CMAR(_dma, _ch) = (uint32_t) (_address); }
+
+//#define DMA_CLEAR_INTERRUPT_FLAGS(_dma, _ch, _flags) { DMA_IFCR(_dma) = ((_flags) << DMA_FLAG_OFFSET(_ch)); }
+#define DMA_CLEAR_INTERRUPT_FLAGS_MULTI(_dma, _flags) { DMA_IFCR(_dma) = (_flags); }
+
 #define DMA_DISABLE_CHANNEL(_dma, _ch) { DMA_CCR(_dma, _ch) &= ~DMA_CCR_EN; }
 #define DMA_ENABLE_CHANNEL(_dma, _ch) { DMA_CCR(_dma, _ch) |= DMA_CCR_EN; }
 #define TIMER_CLEAR_FLAG(_tim, _flags) { TIM_SR(_tim) = ~(_flags); }
 #define TIMER_DISABLE_IRQ(_tim, _irqs) { TIM_DIER(_tim) &= ~(_irqs); }
 #define TIMER_ENABLE_IRQ(_tim, _irqs) { TIM_DIER(_tim) |= (_irqs); }
 #define TIMER_GET_FLAG(_tim, _flag) (TIM_SR(_tim) & (_flag))
+#define TIMER_SET_DMA_ON_COMPARE_EVENT(_tim) {  TIM_CR2(_tim) &= ~TIM_CR2_CCDS; }
+#define TIMER_CLEAR_DMA_ON_COMPARE_EVENT(_tim) {  TIM_CR2(_tim) |= TIM_CR2_CCDS; }
+
 
 #endif  // VIDEO_H_
