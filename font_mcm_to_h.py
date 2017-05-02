@@ -33,24 +33,23 @@ for n in range(256):
         fh.readline()
 
 # reformat to tinyOSD dataset
-font_black = []
-font_white = []
+font = [[], []]
 
 for data in font_data:
     for i in range(4):
         bitset = (data & 0xC0)>>6
         if (bitset == 0b00):
             # black
-            font_black.append(1)
-            font_white.append(0)
+            font[0].append(0)
+            font[1].append(1)
         elif (bitset == 0b10):
             # white
-            font_black.append(0)
-            font_white.append(1)
+            font[0].append(1)
+            font[1].append(0)
         else:
             # transparent
-            font_black.append(0)
-            font_white.append(0)
+            font[0].append(0)
+            font[1].append(0)
         data = data << 2
     
 # debug output png
@@ -63,9 +62,9 @@ for y in range(output_h):
         char = (y/18)*16+(x/12)
         #print "char %d at %d x %d\n" %(char, x, y)
         idx  = char*(12*18) + (x%12) + ((y%18)*12) 
-        if (font_black[idx] == 1):
+        if (font[0][idx] == 1):
             color = 0
-        elif (font_white[idx] == 1):
+        elif (font[1][idx] == 1):
             color = 255
         else:
             color = 128
@@ -75,7 +74,47 @@ for y in range(output_h):
 #print(pngdata)
 
 pngw.write(pngh, pngdata)
-
 pngh.close()
+
+
+# dump to header
+fheader =  open('src/font.h', 'w')
+
+fheader.write("#ifndef __FONT_H__\n")
+fheader.write("#define __FONT_H__\n")
+fheader.write("\n")
+
+fheader.write("// font data, row aligned (6912 bytes)\n")
+fheader.write("static const uint8_t font_data[2][18][12*256/8] =  {\n")
+
+for col in range(2):
+    fheader.write("    { \n");
+    for row in range(18):
+        count = 0
+        fheader.write("        {\n            ")
+        bit_count = 0
+        byte = 0
+        for char in range(256):
+            index = char*(12*18) + row*12
+            for b in range(12):
+                #fetch char 12 char bits per row and fill bytes
+                print (index+b)
+                bit = font[col][index + b]
+                byte = (byte << 1) | bit
+                bit_count = bit_count + 1
+                if (bit_count == 8):
+                    bit_count = 0
+                    fheader.write(hex(byte) + ", ")
+                    if ((count % 16) == 15):
+                        fheader.write("\n            ")
+                    count = count + 1
+                    byte = 0
+        fheader.write("        },\n")
+    fheader.write("    },\n")
+fheader.write("};\n")      
+
+
+fheader.write("#endif  // __FONT_H__\n")
+
 
 

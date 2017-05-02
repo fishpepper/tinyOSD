@@ -25,6 +25,7 @@
 #include "clocksource.h"
 #include "led.h"
 #include "logo.h"
+#include "font.h"
 
 #include <libopencm3/stm32/rcc.h>
 #include <libopencm3/stm32/gpio.h>
@@ -61,6 +62,10 @@ static void video_set_dac_value_raw(uint16_t target);
 #define VIDEO_BUFFER_WIDTH (2*37) //66 // max should be ~68
 //volatile uint8_t video_buffer[2][2][VIDEO_BUFFER_WIDTH+1];
 volatile uint16_t video_buffer[2][2][VIDEO_BUFFER_WIDTH/2];
+
+#define VIDEO_CHAR_BUFFER_WIDTH  50
+#define VIDEO_CHAR_BUFFER_HEIGHT 30
+uint8_t video_char_buffer[VIDEO_CHAR_BUFFER_HEIGHT][VIDEO_CHAR_BUFFER_WIDTH];
 
 volatile uint32_t video_dbg;
 volatile uint32_t video_line;
@@ -105,6 +110,183 @@ static const uint32_t video_cos_table[90] = {
 0x16,0x14,0x11,0xf,0xd,0xb,0x9,0x6,
 0x4,0x2};
 
+void video_render_text(void) {
+    uint32_t line    = (video_line + 2)/2;
+    uint8_t text_row = (line / 18);
+    uint8_t font_row = line % 18;
+
+    for (uint8_t color = 0; color < 1; color++){
+
+        uint8_t *video_data_ptr = (uint8_t*) &video_buffer[color][video_buffer_fill_request][0];
+        // white data has to be shifted one byte
+        if (!color) video_data_ptr++;
+#if 0
+        uint8_t *font_ptr = (uint8_t*)&font_data[color][font_row][0]; //index];
+        //font_ptr = font_ptr + 12*256/8*text_row;
+
+        for(uint8_t t=0; t<VIDEO_BUFFER_WIDTH; t++){
+            *video_data_ptr++ = *font_ptr++;
+        }
+
+#else
+        for (uint8_t text_col = 0; text_col < 30; text_col++) {
+            uint32_t c = 40 + video_char_buffer[text_row][text_col];
+
+
+            // fetch ptr to font data
+            uint32_t index  = (c*12)/8;
+            uint8_t *font_ptr = (uint8_t*)&font_data[color][font_row][index];
+
+            // 0 1] [1 2 3 4] [4 5....
+            if (c & 1) {
+                // odd char data is offset 4 bit
+                if (text_col & 1) {
+                    // font data is [xH] [HL]
+                    // column is odd -> [xH] [HL]
+                    *video_data_ptr  |= (*font_ptr & 0x0F);
+                    video_data_ptr++;
+                    font_ptr++;
+                    *video_data_ptr++   = *font_ptr;
+                } else {
+                    // font data is [xH] [HL]
+                    // column is even -> [HH] [Lx]
+                    *video_data_ptr    = (*font_ptr & 0x0F)<<4;
+                    font_ptr++;
+                    *video_data_ptr   |= (*font_ptr & 0xF0)>>4;
+                    video_data_ptr++;
+                    *video_data_ptr   =  (*font_ptr & 0x0F)<<4;
+                }
+            } else {
+                // even char data is byte aligned
+                    if (text_col & 1) {
+                        // font data is [HH] [Lx]
+                        // column is odd -> [xH] [HL]
+                        *video_data_ptr  |= (*font_ptr & 0xF0) >> 4;
+                        video_data_ptr ++;
+                        *video_data_ptr    = (*font_ptr & 0x0F) << 4;
+                        font_ptr++;
+                        *video_data_ptr++ |= (*font_ptr & 0xF0) >> 4;
+                    } else {
+                        // font data is [HH] [Lx]
+                        // column is even -> [HH] [Lx]
+                        *video_data_ptr++ = *font_ptr++;            // full byte
+                        *video_data_ptr   = (*font_ptr & 0xF0);     // high nibble
+                    }
+            }
+        }
+#endif
+
+    }
+}
+uint32_t ani_count=0;
+uint32_t ani_dir=0;
+uint8_t div=0;
+
+void video_render_ani(void) {
+    uint32_t data = 0;
+    uint32_t logo_start_line = 625/2 - LOGO_HEIGHT/2;
+    uint32_t logo_end_line   = 625/2 + LOGO_HEIGHT/2;
+
+    uint32_t logo_offset_x;
+    if (LOGO_WIDTH <= VIDEO_BUFFER_WIDTH) {
+        logo_offset_x = 0;
+    }else{
+        logo_offset_x = VIDEO_BUFFER_WIDTH/2 - LOGO_WIDTH/8/2;
+    }
+    uint32_t logo_offset;
+    uint8_t *logo_ptr;
+    uint8_t *framebuffer_ptr;
+    uint8_t *video_buffer_ptr;
+    uint8_t *video_buffer_end_ptr;
+
+
+
+    if (video_line == 202) {
+        ani_count+=4;
+        if (ani_count >=360) {
+            ani_count -= 360;
+        }
+    }
+    //ani_count = 170;
+
+    uint32_t scale;
+    if (ani_count < 90) {
+        scale   = video_cos_table[ani_count];
+        ani_dir = 0;
+    }else if (ani_count < 180) {
+        scale   = video_cos_table[180 - ani_count];
+        ani_dir = 1;
+    }else if (ani_count < 270) {
+        scale   = video_cos_table[ani_count - 180];
+        ani_dir = 1;
+    }else{
+        scale   = video_cos_table[360 - ani_count];
+        ani_dir = 0;
+    }
+
+    // we have a new request, osd is rendering the other page now,
+    // time to prepare the next page!
+    //debug("filling page "); debug_put_uint8(video_buffer_fill_request); debug_put_newline();
+
+    // calculate line number:
+    uint32_t line    = video_line + 2;
+
+    logo_start_line = 625/2 - (scale * LOGO_HEIGHT/2) / 128;
+    logo_end_line   = 625/2 + (scale * LOGO_HEIGHT/2) / 128;
+
+    logo_offset = (line - logo_start_line) * 128 / scale * (LOGO_WIDTH/8);
+
+    if (!ani_dir) {
+        // flip on neg rotation
+        logo_offset = LOGO_HEIGHT*LOGO_WIDTH/8 - logo_offset;
+    }
+
+    uint32_t max_len = min((LOGO_WIDTH/8), (VIDEO_BUFFER_WIDTH - logo_offset_x));
+#if 1
+
+    // fill the next line of data now:
+    for(uint8_t col = 0; col < 2; col++){
+
+        //for(uint8_t i=0; i<VIDEO_BUFFER_WIDTH/2; i++){
+//                video_buffer[col][video_buffer_fill_request][i] = 0x0000;
+//            }
+
+        // [0] = white, [1] = black data
+        // fetch correct buffer ptr
+        video_buffer_ptr     = (uint8_t*) &video_buffer[col][video_buffer_fill_request][0];
+        video_buffer_end_ptr = video_buffer_ptr + VIDEO_BUFFER_WIDTH - 4; //(uint8_t*) &video_buffer[col][video_buffer_fill_request][VIDEO_BUFFER_WIDTH/2-2];
+
+        logo_ptr = &logo_data[col][logo_offset];
+
+        // white data has to be shifted one byte
+        if (!col) video_buffer_ptr++;
+        //video_buffer_ptr += logo_offset_x;
+
+
+        if ((line > logo_start_line) && (line < logo_end_line)){
+
+            for (uint32_t i = 0; i < logo_offset_x; i++){
+                *video_buffer_ptr++ = 0x0;
+            }
+
+            for(uint32_t i = 0; i < max_len; i++){
+               *video_buffer_ptr++ = *logo_ptr++;
+            }
+            //while(video_buffer_ptr < video_buffer_end_ptr){
+              //  *video_buffer_ptr++ = 0x0;
+            //}
+
+            //video_buffer[col][video_buffer_fill_request][40-1] = 0xfF;
+
+        }else{
+            // no image data region
+            for(uint32_t x = 0; x < VIDEO_BUFFER_WIDTH; x++){
+               *video_buffer_ptr++ = 0x0;
+            }
+        }
+    }
+#endif
+}
 
 void video_init(void) {
     debug_function_call();
@@ -146,26 +328,14 @@ void video_init(void) {
     led_off();
 
 
+    for (uint8_t y=0; y<VIDEO_CHAR_BUFFER_HEIGHT; y++) {
+        for (uint8_t x=0; x<VIDEO_CHAR_BUFFER_WIDTH; x++) {
+            video_char_buffer[y][x] = x + y;
+        }
+    }
+
   //  video_dma_prepare();
 
-uint32_t data = 0;
-uint32_t logo_start_line = 625/2 - LOGO_HEIGHT/2;
-uint32_t logo_end_line   = 625/2 + LOGO_HEIGHT/2;
-
-uint32_t logo_offset_x;
-if (LOGO_WIDTH <= VIDEO_BUFFER_WIDTH) {
-    logo_offset_x = 0;
-}else{
-    logo_offset_x = VIDEO_BUFFER_WIDTH/2 - LOGO_WIDTH/8/2;
-}
-uint32_t logo_offset;
-uint8_t *logo_ptr;
-uint8_t *framebuffer_ptr;
-uint8_t *video_buffer_ptr;
-uint8_t *video_buffer_end_ptr;
-
-uint32_t ani_count = 0;
-uint32_t ani_dir   = 0;
 
 /*while(1){
 
@@ -187,100 +357,18 @@ uint32_t ani_dir   = 0;
 }
 while(1);
 */
-uint8_t div =0;
 while(1){
 
 
     if (video_buffer_fill_request != VIDEO_BUFFER_FILL_REQUEST_IDLE) {
-        if (video_line == 2) {
-            if (div++ >= 0){
-                ani_count+=4;
-                if (ani_count >=360) {
-                    ani_count -= 360;
-                }
-                div = 0;
-            }
-        }
-        //ani_count = 170;
 
-        uint32_t scale;
-        if (ani_count < 90) {
-            scale   = video_cos_table[ani_count];
-            ani_dir = 0;
-        }else if (ani_count < 180) {
-            scale   = video_cos_table[180 - ani_count];
-            ani_dir = 1;
-        }else if (ani_count < 270) {
-            scale   = video_cos_table[ani_count - 180];
-            ani_dir = 1;
+        if (video_line > 18*4*2) {
+            video_render_ani();
         }else{
-            scale   = video_cos_table[360 - ani_count];
-            ani_dir = 0;
+            // render text
+            video_render_text();
         }
 
-        // we have a new request, osd is rendering the other page now,
-        // time to prepare the next page!
-        //debug("filling page "); debug_put_uint8(video_buffer_fill_request); debug_put_newline();
-
-        // calculate line number:
-        uint32_t line    = video_line + 2;
-
-        logo_start_line = 625/2 - (scale * LOGO_HEIGHT/2) / 128;
-        logo_end_line   = 625/2 + (scale * LOGO_HEIGHT/2) / 128;
-
-        logo_offset = (line - logo_start_line) * 128 / scale * (LOGO_WIDTH/8);
-
-        if (!ani_dir) {
-            // flip on neg rotation
-            logo_offset = LOGO_HEIGHT*LOGO_WIDTH/8 - logo_offset;
-        }
-
-        uint32_t max_len = min((LOGO_WIDTH/8), (VIDEO_BUFFER_WIDTH - logo_offset_x));
-#if 1
-
-        // fill the next line of data now:
-        for(uint8_t col = 0; col < 2; col++){
-
-            //for(uint8_t i=0; i<VIDEO_BUFFER_WIDTH/2; i++){
-//                video_buffer[col][video_buffer_fill_request][i] = 0x0000;
-//            }
-
-            // [0] = white, [1] = black data
-            // fetch correct buffer ptr
-            video_buffer_ptr     = (uint8_t*) &video_buffer[col][video_buffer_fill_request][0];
-            video_buffer_end_ptr = video_buffer_ptr + VIDEO_BUFFER_WIDTH - 4; //(uint8_t*) &video_buffer[col][video_buffer_fill_request][VIDEO_BUFFER_WIDTH/2-2];
-
-            logo_ptr = &logo_data[col][logo_offset];
-
-            // black data has to be shifted one byte
-            if (!col) video_buffer_ptr++;
-            //video_buffer_ptr += logo_offset_x;
-
-
-            if ((line > logo_start_line) && (line < logo_end_line)){
-
-                for (uint32_t i = 0; i < logo_offset_x; i++){
-                    *video_buffer_ptr++ = 0x0;
-                }
-
-                for(uint32_t i = 0; i < max_len; i++){
-                   *video_buffer_ptr++ = *logo_ptr++;
-                }
-NEEDS FURTHER SPEED OPT!
-                //while(video_buffer_ptr < video_buffer_end_ptr){
-                  //  *video_buffer_ptr++ = 0x0;
-                //}
-
-                //video_buffer[col][video_buffer_fill_request][40-1] = 0xfF;
-
-            }else{
-                // no image data region
-                for(uint32_t x = 0; x < VIDEO_BUFFER_WIDTH; x++){
-                   *video_buffer_ptr++ = 0x0;
-                }
-            }
-        }
-#endif
         video_buffer[0][video_buffer_fill_request][VIDEO_BUFFER_WIDTH/2-1] = 0x00FF;
 
         // clear request
@@ -868,7 +956,7 @@ void ADC_COMP_IRQHandler(void) {
             // video_dma_trigger();
 
             //debug_put_uint16((current_compare_value + _US_TO_CLOCKS(10)) - TIM1_CNT ); debug_put_newline();
-            current_compare_value += _US_TO_CLOCKS(6);
+            current_compare_value += _US_TO_CLOCKS(6+1);
 
             //uint32_t ccval = current_compare_value +100; // _US_TO_CLOCKS(15);
             TIM_CCR1(TIM1) = current_compare_value; // correct for offset by different dma access time
