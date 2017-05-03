@@ -44,6 +44,7 @@
 
 #define VIDEO_DEBUG_DMA 0
 #define VIDEO_DEBUG_DURATION_TEXTLINE 1
+#define VIDEO_DEBUG_DURATION_ANIMATION 1
 
 static void video_init_rcc(void);
 static void video_init_gpio(void);
@@ -62,11 +63,11 @@ static void video_dma_trigger(void);
 static void video_set_dac_value_mv(uint16_t target);
 static void video_set_dac_value_raw(uint16_t target);
 
-#define VIDEO_BUFFER_WIDTH (2*37) //66 // max should be ~68
+#define VIDEO_BUFFER_WIDTH (2*36) //66 // max should be ~68
 //volatile uint8_t video_buffer[2][2][VIDEO_BUFFER_WIDTH+1];
 volatile uint16_t video_buffer[2][2][VIDEO_BUFFER_WIDTH/2];
 
-#define VIDEO_CHAR_BUFFER_WIDTH  50
+#define VIDEO_CHAR_BUFFER_WIDTH  20
 #define VIDEO_CHAR_BUFFER_HEIGHT 30
 uint8_t video_char_buffer[VIDEO_CHAR_BUFFER_HEIGHT][VIDEO_CHAR_BUFFER_WIDTH];
 
@@ -108,76 +109,47 @@ static const uint32_t video_cos_table[90] = {
 0x4,0x2};
 
 void video_render_text(void) {
+    if (VIDEO_DEBUG_DURATION_TEXTLINE) led_on();
+
     uint32_t line    = (video_line + 2)/2;
     uint8_t text_row = (line / 18);
     uint8_t font_row = line % 18;
 
-    if (VIDEO_DEBUG_DURATION_TEXTLINE) led_on();
 
-    for (uint8_t color = 0; color < 1; color++){
 
-        uint8_t *video_buffer_ptr = (uint8_t*) &video_buffer[color][video_buffer_fill_request][0];
-        if (!color) {
-            // white data has to be shifted one byte with the first byte cleared
-            *video_buffer_ptr++ = 0x00;
-        }
-#if 0
-        uint8_t *font_ptr = (uint8_t*)&font_data[color][font_row][0]; //index];
-        //font_ptr = font_ptr + 12*256/8*text_row;
+//    for (uint8_t color = 0; color < 1; color++){
 
-        for(uint8_t t=0; t<VIDEO_BUFFER_WIDTH; t++){
-            *video_buffer_ptr++ = *font_ptr++;
-        }
+        uint8_t *video_buffer_ptr[2];
+        video_buffer_ptr[0] = (uint8_t*) &video_buffer[0][video_buffer_fill_request][0];
+        video_buffer_ptr[1] = (uint8_t*) &video_buffer[1][video_buffer_fill_request][0];
 
-#else
-        for (uint8_t text_col = 0; text_col < 30; text_col++) {
-            uint32_t c = 40 + video_char_buffer[text_row][text_col];
+        // white data has to be shifted one byte with the first byte cleared
+        *video_buffer_ptr[0]++ = 0x00;
 
+
+        uint8_t *char_ptr = video_char_buffer[text_row][0];
+
+        for (uint8_t text_col = 0; text_col < 20; text_col++) {
+            //uint32_t c = 48 + video_char_buffer[text_row][text_col];
+            uint16_t index = (*char_ptr++)*3;
 
             // fetch ptr to font data
-            uint32_t index  = (c*12)/8;
-            uint8_t *font_ptr = (uint8_t*)&font_data[color][font_row][index];
+            //uint16_t index = video_char_buffer[text_row][text_col]*3;
+            uint8_t *font_ptr = (uint8_t*)&font_data[font_row][index][0];
 
-            // 0 1] [1 2 3 4] [4 5....
-            if (c & 1) {
-                // odd char data is offset 4 bit
-                if (text_col & 1) {
-                    // font data is [xH] [HL]
-                    // column is odd -> [xH] [HL]
-                    *video_buffer_ptr  |= (*font_ptr & 0x0F);
-                    video_buffer_ptr++;
-                    font_ptr++;
-                    *video_buffer_ptr++   = *font_ptr;
-                } else {
-                    // font data is [xH] [HL]
-                    // column is even -> [HH] [Lx]
-                    *video_buffer_ptr    = (*font_ptr & 0x0F)<<4;
-                    font_ptr++;
-                    *video_buffer_ptr   |= (*font_ptr & 0xF0)>>4;
-                    video_buffer_ptr++;
-                    *video_buffer_ptr   =  (*font_ptr & 0x0F)<<4;
-                }
-            } else {
-                // even char data is byte aligned
-                    if (text_col & 1) {
-                        // font data is [HH] [Lx]
-                        // column is odd -> [xH] [HL]
-                        *video_buffer_ptr  |= (*font_ptr & 0xF0) >> 4;
-                        video_buffer_ptr ++;
-                        *video_buffer_ptr    = (*font_ptr & 0x0F) << 4;
-                        font_ptr++;
-                        *video_buffer_ptr++ |= (*font_ptr & 0xF0) >> 4;
-                    } else {
-                        // font data is [HH] [Lx]
-                        // column is even -> [HH] [Lx]
-                        *video_buffer_ptr++ = *font_ptr++;            // full byte
-                        *video_buffer_ptr   = (*font_ptr & 0xF0);     // high nibble
-                    }
-            }
+            *video_buffer_ptr[0]++  = *font_ptr++;
+            //*video_buffer_ptr[1]++  = *font_ptr++;
+            font_ptr++;
+            *video_buffer_ptr[0]++  = *font_ptr++;
+            //*video_buffer_ptr[1]++  = *font_ptr++;
+            font_ptr++;
+            *video_buffer_ptr[0]++  = *font_ptr++;
+            //*video_buffer_ptr[1]++  = *font_ptr;
+            font_ptr++;
+
         }
-#endif
 
-    }
+  //  }
 
     if (VIDEO_DEBUG_DURATION_TEXTLINE) led_off();
 }
@@ -186,6 +158,8 @@ uint32_t ani_dir=0;
 uint8_t div=0;
 
 void video_render_ani(void) {
+    if (VIDEO_DEBUG_DURATION_ANIMATION) led_on();
+
     uint32_t data = 0;
     uint32_t logo_start_line = 625/2 - LOGO_HEIGHT/2;
     uint32_t logo_end_line   = 625/2 + LOGO_HEIGHT/2;
@@ -268,13 +242,20 @@ void video_render_ani(void) {
 
         if ((line > logo_start_line) && (line < logo_end_line)){
 
-            for (uint32_t i = 0; i < logo_offset_x; i++){
+            /*for (uint32_t i = 0; i < logo_offset_x; i++){
                 *video_buffer_ptr++ = 0x0;
-            }
+            }*/
 
+            memset(video_buffer_ptr, 0, logo_offset_x);
+            video_buffer_ptr+=logo_offset_x;
+            memcpy(video_buffer_ptr, logo_ptr, max_len);
+
+
+/*
             for(uint32_t i = 0; i < max_len; i++){
                *video_buffer_ptr++ = *logo_ptr++;
-            }
+            }*/
+
             //while(video_buffer_ptr < video_buffer_end_ptr){
               //  *video_buffer_ptr++ = 0x0;
             //}
@@ -283,12 +264,15 @@ void video_render_ani(void) {
 
         }else{
             // no image data region
-            for(uint32_t x = 0; x < VIDEO_BUFFER_WIDTH; x++){
+            /*for(uint32_t x = 0; x < VIDEO_BUFFER_WIDTH; x++){
                *video_buffer_ptr++ = 0x0;
-            }
+            }*/
+            memset(&video_buffer[color][video_buffer_fill_request][0], 0x0000, VIDEO_BUFFER_WIDTH);
+
         }
     }
 #endif
+    if (VIDEO_DEBUG_DURATION_ANIMATION) led_off();
 }
 
 void video_init(void) {
@@ -333,7 +317,7 @@ void video_init(void) {
 
     for (uint8_t y=0; y<VIDEO_CHAR_BUFFER_HEIGHT; y++) {
         for (uint8_t x=0; x<VIDEO_CHAR_BUFFER_WIDTH; x++) {
-            video_char_buffer[y][x] = x + y;
+            video_char_buffer[y][x] = 40 + x + y;
         }
     }
 
@@ -446,7 +430,7 @@ static void video_init_spi_single(uint32_t spi) {
 
     // set up spi
     // - master mode
-    // - baud prescaler = apb_clk/2 = 24/2 = 12MHz!
+    // - baud prescaler = apb_clk/2 = 48/2 = 24MHz!
     // - CPOL low
     // - CPHA 1
     // - 8 bit crc (?)
@@ -503,6 +487,10 @@ void DMA1_CHANNEL4_5_IRQHandler(void) {
     //TIMER_CLEAR_DMA_ON_COMPARE_EVENT(TIM1);
     TIMER_CLEAR_FLAG(TIM1, TIM_SR_CC1IF | TIM_SR_CC4IF);
     TIMER_DISABLE_IRQ(TIM1, TIM_DIER_CC1DE | TIM_DIER_CC4DE);
+
+    // prepare next page:
+    video_buffer_page         = 1 - video_buffer_page;
+    video_buffer_fill_request = video_buffer_page;
 
     return;
 }
@@ -882,14 +870,10 @@ void ADC_COMP_IRQHandler(void) {
             current_compare_value += _US_TO_CLOCKS(6+1);
 
             //uint32_t ccval = current_compare_value +100; // _US_TO_CLOCKS(15);
-            TIM_CCR1(TIM1) = current_compare_value; // correct for offset by different dma access time
-            TIM_CCR4(TIM1) = current_compare_value+32;
+            TIM_CCR1(TIM1) = current_compare_value;
+            TIM_CCR4(TIM1) = current_compare_value + 2*16; // correct for offset by different dma access time
 
             if (VIDEO_DEBUG_DMA) led_on();
-
-            // prepare next page:
-            video_buffer_page         = 1 - video_buffer_page;
-            video_buffer_fill_request = video_buffer_page;
 
             TIMER_ENABLE_IRQ(TIM1, TIM_DIER_CC1DE | TIM_DIER_CC4DE | TIM_DIER_CC4IE);
 

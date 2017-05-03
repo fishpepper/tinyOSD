@@ -12,7 +12,7 @@ fn = sys.argv[1]
 fh = open(fn, "r")
 
 #debug output image
-output_w = 192
+output_w = 192*2
 output_h = 287
 pngh = open('font.png', 'wb')
 pngw = png.Writer(output_w, output_h, greyscale=True)
@@ -39,16 +39,22 @@ for data in font_data:
     for i in range(4):
         bitset = (data & 0xC0)>>6
         if (bitset == 0b00):
-            # black
+            # black, double pixels:
             font[0].append(0)
+            font[0].append(0)
+            font[1].append(1)
             font[1].append(1)
         elif (bitset == 0b10):
             # white
             font[0].append(1)
+            font[0].append(1)
+            font[1].append(0)
             font[1].append(0)
         else:
             # transparent
             font[0].append(0)
+            font[0].append(0)
+            font[1].append(0)
             font[1].append(0)
         data = data << 2
     
@@ -59,9 +65,9 @@ for y in range(output_h):
     row = []
     for x in range(output_w):
         # fetch index. we have chars from left to right, top to bot
-        char = (y/18)*16+(x/12)
+        char = (y/18)*16+(x/24)
         #print "char %d at %d x %d\n" %(char, x, y)
-        idx  = char*(12*18) + (x%12) + ((y%18)*12) 
+        idx  = char*(24*18) + (x%24) + ((y%18)*24) 
         if (font[0][idx] == 1):
             color = 0
         elif (font[1][idx] == 1):
@@ -84,37 +90,33 @@ fheader.write("#ifndef __FONT_H__\n")
 fheader.write("#define __FONT_H__\n")
 fheader.write("\n")
 
-fheader.write("// font data, row aligned (6912 bytes)\n")
-fheader.write("static const uint8_t font_data[2][18][12*256/8] =  {\n")
+fheader.write("// font data b/w interleaved\n")
+fheader.write("static const uint8_t font_data[18][256*24/8][2] =  {\n")
 
-for col in range(2):
-    fheader.write("    { \n");
-    for row in range(18):
-        count = 0
-        fheader.write("        {\n            ")
-        bit_count = 0
-        byte = 0
-        for char in range(256):
-            index = char*(12*18) + row*12
-            for b in range(12):
-                #fetch char 12 char bits per row and fill bytes
-                print (index+b)
-                bit = font[col][index + b]
-                byte = (byte << 1) | bit
-                bit_count = bit_count + 1
-                if (bit_count == 8):
-                    bit_count = 0
-                    fheader.write(hex(byte) + ", ")
-                    if ((count % 16) == 15):
-                        fheader.write("\n            ")
-                    count = count + 1
-                    byte = 0
-        fheader.write("        },\n")
-    fheader.write("    },\n")
+count = 0
+for row in range(18):
+    fheader.write("{")
+    for char in range(256):
+        index = char*(24*18) + row*24
+        for b in range(3):
+            fheader.write("{")
+            for col in range(2):
+                byte = 0
+                for i in range(8):
+                    bit = font[col][index + b*8 + i]
+                    byte = (byte << 1) | bit
+                fheader.write(hex(byte) + ", ")
+
+            if ((count % 16) == 15):
+                fheader.write("\n            ")
+            count = count + 1
+
+            fheader.write("}, ")
+    fheader.write("},")
 fheader.write("};\n")      
-
 
 fheader.write("#endif  // __FONT_H__\n")
 
+print ("wrote %d bytes font data" % ( count))
 
 
