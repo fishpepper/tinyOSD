@@ -127,25 +127,56 @@ void video_render_text(void) {
         *video_buffer_ptr[0]++ = 0x00;
 
 
-        uint8_t *char_ptr = video_char_buffer[text_row][0];
+        uint8_t *char_ptr = &video_char_buffer[text_row][0];
 
         for (uint8_t text_col = 0; text_col < 20; text_col++) {
             //uint32_t c = 48 + video_char_buffer[text_row][text_col];
-            uint16_t index = (*char_ptr++)*3;
+            uint16_t index = *char_ptr++; //video_char_buffer[text_row][text_col]; //(*char_ptr++);
 
             // fetch ptr to font data
             //uint16_t index = video_char_buffer[text_row][text_col]*3;
             uint8_t *font_ptr = (uint8_t*)&font_data[font_row][index][0];
 
-            *video_buffer_ptr[0]++  = *font_ptr++;
+            if (!(((uint32_t)video_buffer_ptr[0]) & 1)){
+                // odd mem loc: [x0] [12]
+                *video_buffer_ptr[0] |= ((*font_ptr++)&0xF0)>>4;
+                video_buffer_ptr[0]++;
+                *video_buffer_ptr[0]  = ((*font_ptr++)&0xF0);
+                *video_buffer_ptr[0]  |= ((*font_ptr++)&0xF0)>>4;
+            } else {
+                // even mem loc: [01] [2x]
+                video_buffer_ptr[0]++;
+                *video_buffer_ptr[0]  = ((*font_ptr++)&0xF0);
+                *video_buffer_ptr[0] |= ((*font_ptr++)&0xF0)>>4;
+                video_buffer_ptr[0]++;
+                *video_buffer_ptr[0]  = ((*font_ptr++)&0xF0);
+            }
+
+            font_ptr = (uint8_t*)&font_data[font_row][index][0];
+
+            if ((((uint32_t)video_buffer_ptr[1]) & 1)){
+                // odd mem loc: [x0] [12]
+                *video_buffer_ptr[1] |= ((*font_ptr++)&0x0F);
+                video_buffer_ptr[1]++;
+                *video_buffer_ptr[1]  = ((*font_ptr++)&0x0F)<<4;
+                *video_buffer_ptr[1]  |= ((*font_ptr++)&0x0F);
+            } else {
+                // even mem loc: [01] [2x]
+                video_buffer_ptr[1]++;
+                *video_buffer_ptr[1]  = ((*font_ptr++)&0x0F)<<4;
+                *video_buffer_ptr[1] |= ((*font_ptr++)&0x0F);
+                video_buffer_ptr[1]++;
+                *video_buffer_ptr[1]  = ((*font_ptr++)&0x0F)<<4;
+            }
+
             //*video_buffer_ptr[1]++  = *font_ptr++;
-            font_ptr++;
-            *video_buffer_ptr[0]++  = *font_ptr++;
+            //font_ptr++;
+            //*video_buffer_ptr[0]++  = ((*font_ptr++)&0xF0)>>4;
             //*video_buffer_ptr[1]++  = *font_ptr++;
-            font_ptr++;
-            *video_buffer_ptr[0]++  = *font_ptr++;
+            //font_ptr++;
+            //*video_buffer_ptr[0]++  = ((*font_ptr)&0xF0)>>4;
             //*video_buffer_ptr[1]++  = *font_ptr;
-            font_ptr++;
+            //font_ptr++;
 
         }
 
