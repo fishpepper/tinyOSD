@@ -84,29 +84,28 @@ fheader.write("#ifndef __FONT_H__\n")
 fheader.write("#define __FONT_H__\n")
 fheader.write("\n")
 
-fheader.write("// font data b/w interleaved\n")
-fheader.write("static const uint8_t font_data[18][256][3] =  {\n")
+fheader.write("// font data\n")
+fheader.write("static const uint8_t font_data[2][18][256*2] =  {\n")
 
-# store interleaved data:
-# wwww bbbb wwww bbbb wwww bbbb = 12bit white + 12 bit black
+# blow up font to 16 bits per pixel, add 2 px in front and back
 count = 0
-for row in range(18):
-    fheader.write("{")
-    for char in range(256):
-        index = char*(12*18) + row*12
-        
-        fheader.write("{")
-        for b in range(3):
-            byte = 0
-            for col in range(2):
-                for i in range(4):
-                    bit = font[col][index + b*4 + i]
-                    byte = (byte << 1) | bit
-
-            fheader.write(hex(byte) + ", ")
-        fheader.write("},\n")
-        count = count + 3 
-    fheader.write("},")
+for col in range(2):
+    fheader.write("\n    {  // color %d" % (col))
+    for row in range(18):
+        fheader.write("\n        {  //row %d\n            " % (row))
+        for char in range(256):
+            index = char*(12*18) + row*12
+       
+            word = 0 
+            for i in range(12):
+                bit = font[col][index + i]
+                word = (word << 1) | bit
+            word = word << 2
+            fheader.write(hex((word >> 8) & 0xFF) + ", " + hex((word & 0xFF)) + ",")
+            fheader.write("\n            ")
+            count = count + 1
+        fheader.write("        },")
+    fheader.write("    },")
 fheader.write("};\n")      
 
 fheader.write("#endif  // __FONT_H__\n")
