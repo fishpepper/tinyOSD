@@ -42,6 +42,9 @@
 
 #include <libopencmsis/core_cm3.h>
 
+#define VIDEO_DEBUG_DMA 0
+#define VIDEO_DEBUG_DURATION_TEXTLINE 1
+
 static void video_init_rcc(void);
 static void video_init_gpio(void);
 static void video_init_timer(void);
@@ -85,14 +88,8 @@ volatile uint32_t video_buffer_page;
 void TIM1_CC_IRQHandler(void) {
     if (TIMER_GET_FLAG(TIM1, TIM_SR_CC4IF)) {
         TIMER_CLEAR_FLAG(TIM1, TIM_SR_CC4IF);
-        //timer_disable_irq(TIM1, TIM_DIER_CC2IE);
-        //while(1) led_toggle();
-       led_toggle();
-       //delay_us(1);
-       led_toggle();
-       //video_dma_prepare();
-        //debug("CC MATCH\n");
-//        led_off();
+        if (VIDEO_DEBUG_DMA) led_toggle();
+        if (VIDEO_DEBUG_DMA) led_toggle();
     }
 }
 
@@ -115,17 +112,21 @@ void video_render_text(void) {
     uint8_t text_row = (line / 18);
     uint8_t font_row = line % 18;
 
+    if (VIDEO_DEBUG_DURATION_TEXTLINE) led_on();
+
     for (uint8_t color = 0; color < 1; color++){
 
-        uint8_t *video_data_ptr = (uint8_t*) &video_buffer[color][video_buffer_fill_request][0];
-        // white data has to be shifted one byte
-        if (!color) video_data_ptr++;
+        uint8_t *video_buffer_ptr = (uint8_t*) &video_buffer[color][video_buffer_fill_request][0];
+        if (!color) {
+            // white data has to be shifted one byte with the first byte cleared
+            *video_buffer_ptr++ = 0x00;
+        }
 #if 0
         uint8_t *font_ptr = (uint8_t*)&font_data[color][font_row][0]; //index];
         //font_ptr = font_ptr + 12*256/8*text_row;
 
         for(uint8_t t=0; t<VIDEO_BUFFER_WIDTH; t++){
-            *video_data_ptr++ = *font_ptr++;
+            *video_buffer_ptr++ = *font_ptr++;
         }
 
 #else
@@ -143,40 +144,42 @@ void video_render_text(void) {
                 if (text_col & 1) {
                     // font data is [xH] [HL]
                     // column is odd -> [xH] [HL]
-                    *video_data_ptr  |= (*font_ptr & 0x0F);
-                    video_data_ptr++;
+                    *video_buffer_ptr  |= (*font_ptr & 0x0F);
+                    video_buffer_ptr++;
                     font_ptr++;
-                    *video_data_ptr++   = *font_ptr;
+                    *video_buffer_ptr++   = *font_ptr;
                 } else {
                     // font data is [xH] [HL]
                     // column is even -> [HH] [Lx]
-                    *video_data_ptr    = (*font_ptr & 0x0F)<<4;
+                    *video_buffer_ptr    = (*font_ptr & 0x0F)<<4;
                     font_ptr++;
-                    *video_data_ptr   |= (*font_ptr & 0xF0)>>4;
-                    video_data_ptr++;
-                    *video_data_ptr   =  (*font_ptr & 0x0F)<<4;
+                    *video_buffer_ptr   |= (*font_ptr & 0xF0)>>4;
+                    video_buffer_ptr++;
+                    *video_buffer_ptr   =  (*font_ptr & 0x0F)<<4;
                 }
             } else {
                 // even char data is byte aligned
                     if (text_col & 1) {
                         // font data is [HH] [Lx]
                         // column is odd -> [xH] [HL]
-                        *video_data_ptr  |= (*font_ptr & 0xF0) >> 4;
-                        video_data_ptr ++;
-                        *video_data_ptr    = (*font_ptr & 0x0F) << 4;
+                        *video_buffer_ptr  |= (*font_ptr & 0xF0) >> 4;
+                        video_buffer_ptr ++;
+                        *video_buffer_ptr    = (*font_ptr & 0x0F) << 4;
                         font_ptr++;
-                        *video_data_ptr++ |= (*font_ptr & 0xF0) >> 4;
+                        *video_buffer_ptr++ |= (*font_ptr & 0xF0) >> 4;
                     } else {
                         // font data is [HH] [Lx]
                         // column is even -> [HH] [Lx]
-                        *video_data_ptr++ = *font_ptr++;            // full byte
-                        *video_data_ptr   = (*font_ptr & 0xF0);     // high nibble
+                        *video_buffer_ptr++ = *font_ptr++;            // full byte
+                        *video_buffer_ptr   = (*font_ptr & 0xF0);     // high nibble
                     }
             }
         }
 #endif
 
     }
+
+    if (VIDEO_DEBUG_DURATION_TEXTLINE) led_off();
 }
 uint32_t ani_count=0;
 uint32_t ani_dir=0;
@@ -245,7 +248,7 @@ void video_render_ani(void) {
 #if 1
 
     // fill the next line of data now:
-    for(uint8_t col = 0; col < 2; col++){
+    for(uint8_t color = 0; color < 2; color++){
 
         //for(uint8_t i=0; i<VIDEO_BUFFER_WIDTH/2; i++){
 //                video_buffer[col][video_buffer_fill_request][i] = 0x0000;
@@ -253,15 +256,15 @@ void video_render_ani(void) {
 
         // [0] = white, [1] = black data
         // fetch correct buffer ptr
-        video_buffer_ptr     = (uint8_t*) &video_buffer[col][video_buffer_fill_request][0];
+        video_buffer_ptr     = (uint8_t*) &video_buffer[color][video_buffer_fill_request][0];
         video_buffer_end_ptr = video_buffer_ptr + VIDEO_BUFFER_WIDTH - 4; //(uint8_t*) &video_buffer[col][video_buffer_fill_request][VIDEO_BUFFER_WIDTH/2-2];
 
-        logo_ptr = &logo_data[col][logo_offset];
+        logo_ptr = &logo_data[color][logo_offset];
 
-        // white data has to be shifted one byte
-        if (!col) video_buffer_ptr++;
-        //video_buffer_ptr += logo_offset_x;
-
+        if (!color) {
+            // white data has to be shifted one byte with the first byte cleared
+            *video_buffer_ptr++ = 0x00;
+        }
 
         if ((line > logo_start_line) && (line < logo_end_line)){
 
@@ -682,74 +685,6 @@ void video_dma_prepare() {
 
 }
 
-#if 0
-// waking up from sleep mode is quite deterministic
-// disable all interrupts except tim1 compare2 int
-void pend_sv_handler(void) {
-    ///led_toggle();
-    //debug("sleeping\n");
-
-    // disable all irqs EXCPET CC match here!
-    //nvic_disable_irq(VIDEO_COMP_EXTI_IRQN);
-
-    timer_enable_irq(TIM1, TIM_DIER_CC2IE);
-    nvic_set_priority(NVIC_TIM1_CC_IRQ, NVIC_PRIO_TIMER1);
-    nvic_enable_irq(NVIC_TIM1_CC_IRQ);
-
-    // Clear pendSV flag
-    SCB_ICSR |= SCB_ICSR_PENDSVCLR;
-
-    // do NOT deep sleep...
-    SCB_SCR &= ~SCB_SCR_SLEEPDEEP_Msk;
-
-    //SCB_SCR |= SCB_SCR_SEVEONPEND;
-    //SCB_SCR |= SCB_SCR_SLEEPONEXIT;
-    /*uint32_t s_ = 0;
-    while(1){
-        uint32_t s = TIM1_SR & (1<<2);
-        if (s!= s_){
-            debug_put_hex32(s);
-            debug_put_newline();
-        }
-        s_ = s;
-    }*/
-    //debug_put_hex32(TIM1_SR & (1<<2));
-
-    /*uint32_t i;
-    for(i=0; i<10; i++) debug_put_hex32(TIM1_SR & (1<<2));*/
-
-    // sleep now!
-    led_off();
-    __WFI();
-    //__asm__("wfe");
-
-
-    //why does cc int not trigger resume?
-
-    led_on();
-
-    //debug("AWAKE\n");
-    //while(1) led_toggle();
-
-    // re-enable all irqs
-   // nvic_enable_irq(VIDEO_COMP_EXTI_IRQN);
-}
-#endif
-
-
-void video_dma_trigger(void) {
-    // debug_function_call();
-
-    // trigger the SPI TX + RX dma
-    spi_enable_tx_dma(VIDEO_SPI_WHITE);
-
-    // wait for completion
-    //while (!dma_get_interrupt_flag(VIDEO_DMA_WHITE, VIDEO_DMA_CHANNEL_WHITE, DMA_TCIF)) {}
-
-    // disable DMA
-    //dma_disable_channel(VIDEO_DMA_WHITE, VIDEO_DMA_CHANNEL_WHITE);
-}
-
 static void video_init_rcc(void) {
     debug_function_call();
 
@@ -928,18 +863,6 @@ void ADC_COMP_IRQHandler(void) {
         if ((pulse_len > VIDEO_SYNC_VSYNC_MIN) && (pulse_len < VIDEO_SYNC_VSYNC_MAX)) {
             // this was the last half line -> hsync!
             video_field = VIDEO_FIRST_FIELD;
-            //led_on();
-            // spi_send(VIDEO_SPI_WHITE, 0x7FF7);
-
-            // timer_set_dma_on_update_event(TIM1);
-
-            // timer_enable_oc_output(TIM1, TIM_OC2);
-            // timer_disable_oc_clear(TIM1, TIM_OC2);
-            // timer_set_oc_slow_mode(TIM1, TIM_OC2);
-            // timer_set_oc_mode(TIM1, TIM_OC2, TIM_OCM_TOGGLE);
-            //
-            // video_dma_trigger();
-           // timer_disable_preload(TIM1);
         }
     } else  {
         // rising edge -> this was measuring the a sync part
@@ -962,51 +885,15 @@ void ADC_COMP_IRQHandler(void) {
             TIM_CCR1(TIM1) = current_compare_value; // correct for offset by different dma access time
             TIM_CCR4(TIM1) = current_compare_value+32;
 
-            led_on();
+            if (VIDEO_DEBUG_DMA) led_on();
 
-            // disable dma during config
-            //DMA_DISABLE_CHANNEL(VIDEO_DMA_WHITE, DMA_CHANNEL2)
-            //DMA_DISABLE_CHANNEL(VIDEO_DMA_WHITE, DMA_CHANNEL3);
-            //DMA_DISABLE_CHANNEL(VIDEO_DMA_BLACK, DMA_CHANNEL4);
-            //DMA_DISABLE_CHANNEL(VIDEO_DMA_BLACK, DMA_CHANNEL5);
-
-
-            //clear pending dma transfers
-  //          SPI_CR2(SPI1) &= ~SPI_CR2_TXDMAEN;
-//            SPI_CR2(SPI2) &= ~SPI_CR2_TXDMAEN;
-
-            // prepare to send tx trigger
-            //video_spi_cr_trigger = SPI_CR2(SPI1) | SPI_CR2_TXDMAEN;
-            //dma_set_memory_address(VIDEO_DMA_WHITE, DMA_CHANNEL2, (uint32_t)&(video_spi_cr_trigger));
-            //DMA_SET_NUMBER_OF_DATA(VIDEO_DMA_WHITE, DMA_CHANNEL2, 1);
-
-            //video_spi_cr_trigger_b = SPI_CR2(SPI1) | SPI_CR2_TXDMAEN;
-            //dma_set_memory_address(VIDEO_DMA_WHITE, DMA_CHANNEL4, (uint32_t)&(video_spi_cr_trigger_b));
-  //          DMA_SET_NUMBER_OF_DATA(VIDEO_DMA_BLACK, DMA_CHANNEL4, 1);
-//
             // prepare next page:
             video_buffer_page         = 1 - video_buffer_page;
             video_buffer_fill_request = video_buffer_page;
 
-            // prepare to send dma spi data
-            //DMA_SET_MEMORY_ADDRES_NOCHECK(VIDEO_DMA_WHITE, DMA_CHANNEL3, &(video_buffer[0][video_buffer_page]));
-            //DMA_SET_NUMBER_OF_DATA(VIDEO_DMA_WHITE, DMA_CHANNEL3, VIDEO_BUFFER_WIDTH);
-
-            //DMA_SET_MEMORY_ADDRES_NOCHECK(VIDEO_DMA_BLACK, DMA_CHANNEL5, &(video_buffer[1][video_buffer_page]));
-            //DMA_SET_NUMBER_OF_DATA(VIDEO_DMA_BLACK, DMA_CHANNEL5, VIDEO_BUFFER_WIDTH);
-
-            // clear all dma if
-            // NOT NECESSARY? move to define if enable is necc...
-           //  dma_clear_interrupt_flags(VIDEO_DMA_WHITE, VIDEO_DMA_CHANNEL_WHITE, DMA_TCIF);
-
-            // clear pending dma request from timer
-
-            // disable and re-enable DMA on timer match in order to clear pending timer triggers
-            //TIMER_DISABLE_IRQ(TIM1, TIM_DIER_CC1DE | TIM_DIER_CC4DE);
-            //TIMER_CLEAR_FLAG(TIM1, TIM_SR_CC1IF | TIM_SR_CC4IF);
-
-
             TIMER_ENABLE_IRQ(TIM1, TIM_DIER_CC1DE | TIM_DIER_CC4DE | TIM_DIER_CC4IE);
+
+            if (VIDEO_DEBUG_DMA) TIMER_ENABLE_IRQ(TIM1, TIM_DIER_CC4IE);
 
             // enable dma channel
             // this was set up during the dma end of tx int
@@ -1015,59 +902,15 @@ void ADC_COMP_IRQHandler(void) {
             DMA_ENABLE_CHANNEL(VIDEO_DMA_BLACK, DMA_CHANNEL4);
             DMA_ENABLE_CHANNEL(VIDEO_DMA_BLACK, DMA_CHANNEL5);
 
-#if 0
-            // prepare next page:
-            video_buffer_fill_request = video_buffer_page;
-            video_buffer_page         = 1 - video_buffer_page;
+            if (VIDEO_DEBUG_DMA) led_off();
 
-            DMA_DISABLE_CHANNEL(VIDEO_DMA_BLACK, DMA_CHANNEL4);
-            DMA_DISABLE_CHANNEL(VIDEO_DMA_BLACK, DMA_CHANNEL5);
-
-
-            SPI_CR2(SPI1) &= ~SPI_CR2_TXDMAEN;
-            SPI_CR2(SPI2) &= ~SPI_CR2_TXDMAEN;
-
-            TIMER_DISABLE_IRQ(TIM1, TIM_DIER_CC1DE | TIM_DIER_CC4DE);
-
-            TIMER_ENABLE_IRQ(TIM1, TIM_DIER_CC4DE);
-            TIMER_ENABLE_IRQ(TIM1, TIM_DIER_CC4IE);
-
-
-            DMA_ENABLE_CHANNEL(VIDEO_DMA_BLACK, DMA_CHANNEL4);
-            DMA_ENABLE_CHANNEL(VIDEO_DMA_BLACK, DMA_CHANNEL5);
-
-#endif
-            led_off();
             // increment video field
             video_line += 2;
 
-            // TX: transfer buffer to slave
-            //dma_set_memory_address(VIDEO_DMA_WHITE, VIDEO_DMA_CHANNEL_WHITE, (uint32_t)video_buffer[0]);
-            //dma_set_number_of_data(VIDEO_DMA_WHITE, VIDEO_DMA_CHANNEL_WHITE, VIDEO_BUFFER_WIDTH-1);
-
-            // clear pending dma request from timer
-
-
-            // enable dma channel
-            //dma_enable_channel(VIDEO_DMA_WHITE, VIDEO_DMA_CHANNEL_WHITE);
-
-            /*timer_clear_flag(TIM1, TIM_SR_CC2IF);
-*/
-            //
-/*            timer_set_oc_value(TIM1, TIM_OC2, TIM1_CNT + 60); //current_compare_value+150);
-delay_us(45000);
-while (!dma_get_interrupt_flag(VIDEO_DMA_WHITE, VIDEO_DMA_CHANNEL_WHITE, DMA_TCIF)) {}
-
-// disable DMA
-dma_disable_channel(VIDEO_DMA_WHITE, VIDEO_DMA_CHANNEL_WHITE);
-*/
             // prepare for the next field
             video_field = 1 - VIDEO_FIRST_FIELD;
         } else {
             // this is a broad sync
-            // prepare video transmission
-            // configure timer compare match output
-            // video_dma_trigger();
         }
     }
 
