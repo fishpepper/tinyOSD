@@ -67,7 +67,7 @@ static void video_set_dac_value_raw(uint16_t target);
 //volatile uint8_t video_buffer[2][2][VIDEO_BUFFER_WIDTH+1];
 volatile uint16_t video_buffer[2][2][VIDEO_BUFFER_WIDTH/2];
 
-#define VIDEO_CHAR_BUFFER_WIDTH  20
+#define VIDEO_CHAR_BUFFER_WIDTH  32
 #define VIDEO_CHAR_BUFFER_HEIGHT 30
 uint8_t video_char_buffer[VIDEO_CHAR_BUFFER_HEIGHT][VIDEO_CHAR_BUFFER_WIDTH];
 
@@ -111,7 +111,14 @@ static const uint32_t video_cos_table[90] = {
 void video_render_text(void) {
     if (VIDEO_DEBUG_DURATION_TEXTLINE) led_on();
 
-    uint32_t line    = (video_line + 2)/2;
+#define VIDEO_EMPTY_LINES 50
+    if (video_line < VIDEO_EMPTY_LINES) {
+        memset(&video_buffer[0][video_buffer_fill_request][0], 0x0000, VIDEO_BUFFER_WIDTH);
+        memset(&video_buffer[1][video_buffer_fill_request][0], 0x0000, VIDEO_BUFFER_WIDTH);
+
+        return;
+    }
+    uint32_t line    = (video_line + 2 - VIDEO_EMPTY_LINES )/2;
     uint8_t text_row = (line / 18);
     uint8_t font_row = line % 18;
 
@@ -129,7 +136,7 @@ void video_render_text(void) {
 
         uint8_t *char_ptr = &video_char_buffer[text_row][0];
 uint8_t tmp=0;
-        for (uint8_t text_col = 0; text_col < 30; text_col++) {
+        for (uint8_t text_col = 0; text_col < VIDEO_CHAR_BUFFER_WIDTH; text_col++) {
             //uint32_t c = 48 + video_char_buffer[text_row][text_col];
             uint16_t index = *char_ptr++; //video_char_buffer[text_row][text_col]; //(*char_ptr++);
 
@@ -324,9 +331,16 @@ void video_init(void) {
 
     for (uint8_t y=0; y<VIDEO_CHAR_BUFFER_HEIGHT; y++) {
         for (uint8_t x=0; x<VIDEO_CHAR_BUFFER_WIDTH; x++) {
-            video_char_buffer[y][x] = 40 + x + y;
+            video_char_buffer[y][x] = 0 + x + y;
         }
     }
+
+    video_char_buffer[1][20+0] = 32 + 'H' - 'A';
+    video_char_buffer[1][20+1] = 32 + 'E' - 'A';
+    video_char_buffer[1][20+2] = 32 + 'L' - 'A';
+    video_char_buffer[1][20+3] = 32 + 'L' - 'A';
+    video_char_buffer[1][20+4] = 32 + 'O' - 'A';
+    video_char_buffer[1][20+5] = 0;
 
   //  video_dma_prepare();
 
@@ -356,14 +370,21 @@ while(1){
 
     if (video_buffer_fill_request != VIDEO_BUFFER_FILL_REQUEST_IDLE) {
 
-        if ((video_line > 18*5*2)){ // && (video_line < 18*6*2+200)){
+        if ((video_line < 23) || (video_line > 240*2)) {
+            // no video allowed
+            memset(&video_buffer[0][video_buffer_fill_request][0], 0x0000, VIDEO_BUFFER_WIDTH);
+            memset(&video_buffer[1][video_buffer_fill_request][0], 0x0000, VIDEO_BUFFER_WIDTH);
+
+        }else if ((video_line > 18*5*2) && (video_line < 18*6*2+200)){
             video_render_ani();
         }else{
             // render text
             video_render_text();
         }
 
-        video_buffer[0][video_buffer_fill_request][VIDEO_BUFFER_WIDTH/2-1] = 0x00FF;
+        //if ((video_line > 10) && (video_line < 300)) video_buffer[0][video_buffer_fill_request][VIDEO_BUFFER_WIDTH/2-1] = 0x00FF;
+
+    //video_buffer[0][video_buffer_fill_request][VIDEO_BUFFER_WIDTH/2-1] = 0x00FF;
 
         // clear request
         video_buffer_fill_request = VIDEO_BUFFER_FILL_REQUEST_IDLE;
@@ -422,6 +443,7 @@ static void video_init_pendsv(void) {
 
 static void video_init_spi(void) {
     video_init_spi_single(VIDEO_SPI_WHITE);
+
     video_init_spi_single(VIDEO_SPI_BLACK);
 }
 
@@ -719,11 +741,11 @@ static void video_init_gpio(void) {
 
     // set spi to output
     // init sck (5, for dbg), MOSI (7)
-    uint32_t spi_gpios = GPIO5 | GPIO7;
+    uint32_t spi_gpios = GPIO3 | GPIO5;
     // set mode
-    gpio_mode_setup(VIDEO_GPIO, GPIO_MODE_AF, GPIO_PUPD_NONE, spi_gpios);
-    gpio_set_output_options(VIDEO_GPIO, GPIO_OTYPE_PP, GPIO_OSPEED_50MHZ, spi_gpios);
-    gpio_set(VIDEO_GPIO, GPIO7);
+    gpio_mode_setup(GPIOB, GPIO_MODE_AF, GPIO_PUPD_NONE, spi_gpios);
+    gpio_set_output_options(GPIOB, GPIO_OTYPE_PP, GPIO_OSPEED_50MHZ, spi_gpios);
+    gpio_set(GPIOB, GPIO3);
 
     // set spi to output
     // init sck (13, for dbg), MOSI (15)

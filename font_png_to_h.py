@@ -18,26 +18,25 @@ print png_options
 
 raw_data = list(png_data)
 
-font_black = []
-font_white = []
+font = [[], []]
 
 for row in (raw_data):
     for x in range(0, len(row), 4):
         red = row[x]
         if (red == 0):
             # black
-            font_black.append(1)
-            font_white.append(0)
+            font[1].append(1)
+            font[0].append(0)
         elif (red == 255):
             # white
-            font_black.append(0)
-            font_white.append(1)
+            font[1].append(0)
+            font[0].append(1)
         else:
             # transparent
-            font_black.append(0)
-            font_white.append(0)
+            font[1].append(0)
+            font[0].append(0)
 
-print ("got %d bytes of fotn data\n" % (len(font_black)))
+print ("got %d bytes of fotn data\n" % (len(font[0])))
 
 #debug output image
 max_char = 90
@@ -55,9 +54,9 @@ for y in range(output_h):
     for x in range(max_char):
         for i in range(16):
             idx  = png_w * y + x * 16 + i
-            if (font_black[idx] == 1):
+            if (font[1][idx] == 1):
                 color = 0
-            elif (font_white[idx] == 1):
+            elif (font[0][idx] == 1):
                 color = 255
             else:
                 color = 128
@@ -69,5 +68,41 @@ for y in range(output_h):
 pngw.write(pngh, pngdata)
 
 pngh.close()
+
+
+# dump to header
+fheader =  open('src/font.h', 'w')
+
+fheader.write("#ifndef __FONT_H__\n")
+fheader.write("#define __FONT_H__\n")
+fheader.write("\n")
+
+fheader.write("// font data\n")
+fheader.write("static const uint8_t font_data[2][18][256*2] =  {\n")
+
+# blow up font to 16 bits per pixel, add 2 px in front and back
+count = 0
+for col in range(2):
+    fheader.write("\n    {  // color %d" % (col))
+    for row in range(18):
+        fheader.write("\n        {  //row %d\n            " % (row))
+        for char in range(256):
+            for b in range(2):
+                byte = 0
+                for i in range(8):
+                    index  = 256*8*2 * row + char * 2 * 8 + b*8 + i
+                    bit = font[col][index]
+                    byte = (byte << 1) | bit
+                fheader.write(hex(byte) + ", ")
+            fheader.write("\n            ")
+            count = count + 1
+        fheader.write("        },")
+    fheader.write("    },")
+fheader.write("};\n")
+
+fheader.write("#endif  // __FONT_H__\n")
+
+print ("wrote %d bytes font data" % ( count))
+
 
 
