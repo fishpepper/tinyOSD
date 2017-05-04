@@ -25,6 +25,7 @@
 #include "clocksource.h"
 #include "led.h"
 #include "logo.h"
+#include "font.h"
 
 #include <libopencm3/stm32/rcc.h>
 #include <libopencm3/stm32/gpio.h>
@@ -40,6 +41,10 @@
 #include <libopencm3/cm3/nvic.h>
 
 #include <libopencmsis/core_cm3.h>
+
+#define VIDEO_DEBUG_DMA 0
+#define VIDEO_DEBUG_DURATION_TEXTLINE 1
+#define VIDEO_DEBUG_DURATION_ANIMATION 1
 
 static void video_init_rcc(void);
 static void video_init_gpio(void);
@@ -58,9 +63,13 @@ static void video_dma_trigger(void);
 static void video_set_dac_value_mv(uint16_t target);
 static void video_set_dac_value_raw(uint16_t target);
 
-#define VIDEO_BUFFER_WIDTH (2*37) //66 // max should be ~68
+#define VIDEO_BUFFER_WIDTH (2*36) //66 // max should be ~68
 //volatile uint8_t video_buffer[2][2][VIDEO_BUFFER_WIDTH+1];
 volatile uint16_t video_buffer[2][2][VIDEO_BUFFER_WIDTH/2];
+
+#define VIDEO_CHAR_BUFFER_WIDTH  20
+#define VIDEO_CHAR_BUFFER_HEIGHT 30
+uint8_t video_char_buffer[VIDEO_CHAR_BUFFER_HEIGHT][VIDEO_CHAR_BUFFER_WIDTH];
 
 volatile uint32_t video_dbg;
 volatile uint32_t video_line;
@@ -80,14 +89,8 @@ volatile uint32_t video_buffer_page;
 void TIM1_CC_IRQHandler(void) {
     if (TIMER_GET_FLAG(TIM1, TIM_SR_CC4IF)) {
         TIMER_CLEAR_FLAG(TIM1, TIM_SR_CC4IF);
-        //timer_disable_irq(TIM1, TIM_DIER_CC2IE);
-        //while(1) led_toggle();
-       led_toggle();
-       //delay_us(1);
-       led_toggle();
-       //video_dma_prepare();
-        //debug("CC MATCH\n");
-//        led_off();
+        if (VIDEO_DEBUG_DMA) led_toggle();
+        if (VIDEO_DEBUG_DMA) led_toggle();
     }
 }
 
@@ -105,6 +108,179 @@ static const uint32_t video_cos_table[90] = {
 0x16,0x14,0x11,0xf,0xd,0xb,0x9,0x6,
 0x4,0x2};
 
+void video_render_text(void) {
+    if (VIDEO_DEBUG_DURATION_TEXTLINE) led_on();
+
+    uint32_t line    = (video_line + 2)/2;
+    uint8_t text_row = (line / 18);
+    uint8_t font_row = line % 18;
+
+
+
+//    for (uint8_t color = 0; color < 1; color++){
+
+        uint8_t *video_buffer_ptr[2];
+        video_buffer_ptr[0] = (uint8_t*) &video_buffer[0][video_buffer_fill_request][0];
+        video_buffer_ptr[1] = (uint8_t*) &video_buffer[1][video_buffer_fill_request][0];
+
+        // white data has to be shifted one byte with the first byte cleared
+        *video_buffer_ptr[0]++ = 0x00;
+
+
+        uint8_t *char_ptr = &video_char_buffer[text_row][0];
+uint8_t tmp=0;
+        for (uint8_t text_col = 0; text_col < 30; text_col++) {
+            //uint32_t c = 48 + video_char_buffer[text_row][text_col];
+            uint16_t index = *char_ptr++; //video_char_buffer[text_row][text_col]; //(*char_ptr++);
+
+            // fetch ptr to font data
+            //uint16_t index = video_char_buffer[text_row][text_col]*3;
+            uint8_t *font_ptr = (uint8_t*)&font_data[0][font_row][index*2];
+
+            *video_buffer_ptr[0]++ = *font_ptr++;
+            *video_buffer_ptr[0]++ = *font_ptr++;
+
+            font_ptr = (uint8_t*)&font_data[1][font_row][index*2];
+
+            *video_buffer_ptr[1]++ = (*font_ptr++);
+            *video_buffer_ptr[1]++ = (*font_ptr++);
+
+            //*video_buffer_ptr[1]++  = *font_ptr++;
+            //font_ptr++;
+            //*video_buffer_ptr[0]++  = ((*font_ptr++)&0xF0)>>4;
+            //*video_buffer_ptr[1]++  = *font_ptr++;
+            //font_ptr++;
+            //*video_buffer_ptr[0]++  = ((*font_ptr)&0xF0)>>4;
+            //*video_buffer_ptr[1]++  = *font_ptr;
+            //font_ptr++;
+
+        }
+
+  //  }
+
+    if (VIDEO_DEBUG_DURATION_TEXTLINE) led_off();
+}
+uint32_t ani_count=0;
+uint32_t ani_dir=0;
+uint8_t div=0;
+
+void video_render_ani(void) {
+    if (VIDEO_DEBUG_DURATION_ANIMATION) led_on();
+
+    uint32_t data = 0;
+    uint32_t logo_start_line = 625/2 - LOGO_HEIGHT/2;
+    uint32_t logo_end_line   = 625/2 + LOGO_HEIGHT/2;
+
+    uint32_t logo_offset_x;
+    if (LOGO_WIDTH <= VIDEO_BUFFER_WIDTH) {
+        logo_offset_x = 0;
+    }else{
+        logo_offset_x = VIDEO_BUFFER_WIDTH/2 - LOGO_WIDTH/8/2;
+    }
+    uint32_t logo_offset;
+    uint8_t *logo_ptr;
+    uint8_t *framebuffer_ptr;
+    uint8_t *video_buffer_ptr;
+    uint8_t *video_buffer_end_ptr;
+
+
+
+    if (video_line == 202) {
+        ani_count+=4;
+        if (ani_count >=360) {
+            ani_count -= 360;
+        }
+    }
+    //ani_count = 170;
+
+    uint32_t scale;
+    if (ani_count < 90) {
+        scale   = video_cos_table[ani_count];
+        ani_dir = 0;
+    }else if (ani_count < 180) {
+        scale   = video_cos_table[180 - ani_count];
+        ani_dir = 1;
+    }else if (ani_count < 270) {
+        scale   = video_cos_table[ani_count - 180];
+        ani_dir = 1;
+    }else{
+        scale   = video_cos_table[360 - ani_count];
+        ani_dir = 0;
+    }
+
+    // we have a new request, osd is rendering the other page now,
+    // time to prepare the next page!
+    //debug("filling page "); debug_put_uint8(video_buffer_fill_request); debug_put_newline();
+
+    // calculate line number:
+    uint32_t line    = video_line + 2;
+
+    logo_start_line = 625/2 - (scale * LOGO_HEIGHT/2) / 128;
+    logo_end_line   = 625/2 + (scale * LOGO_HEIGHT/2) / 128;
+
+    logo_offset = (line - logo_start_line) * 128 / scale * (LOGO_WIDTH/8);
+
+    if (!ani_dir) {
+        // flip on neg rotation
+        logo_offset = LOGO_HEIGHT*LOGO_WIDTH/8 - logo_offset;
+    }
+
+    uint32_t max_len = min((LOGO_WIDTH/8), (VIDEO_BUFFER_WIDTH - logo_offset_x));
+#if 1
+
+    // fill the next line of data now:
+    for(uint8_t color = 0; color < 2; color++){
+
+        //for(uint8_t i=0; i<VIDEO_BUFFER_WIDTH/2; i++){
+//                video_buffer[col][video_buffer_fill_request][i] = 0x0000;
+//            }
+
+        // [0] = white, [1] = black data
+        // fetch correct buffer ptr
+        video_buffer_ptr     = (uint8_t*) &video_buffer[color][video_buffer_fill_request][0];
+        video_buffer_end_ptr = video_buffer_ptr + VIDEO_BUFFER_WIDTH - 4; //(uint8_t*) &video_buffer[col][video_buffer_fill_request][VIDEO_BUFFER_WIDTH/2-2];
+
+        logo_ptr = &logo_data[color][logo_offset];
+
+        if (!color) {
+            // white data has to be shifted one byte with the first byte cleared
+            *video_buffer_ptr++ = 0x00;
+        }
+
+        if ((line > logo_start_line) && (line < logo_end_line)){
+
+            /*for (uint32_t i = 0; i < logo_offset_x; i++){
+                *video_buffer_ptr++ = 0x0;
+            }*/
+
+            memset(video_buffer_ptr, 0, logo_offset_x);
+            video_buffer_ptr+=logo_offset_x;
+            memcpy(video_buffer_ptr, logo_ptr, max_len);
+
+
+/*
+            for(uint32_t i = 0; i < max_len; i++){
+               *video_buffer_ptr++ = *logo_ptr++;
+            }*/
+
+            //while(video_buffer_ptr < video_buffer_end_ptr){
+              //  *video_buffer_ptr++ = 0x0;
+            //}
+
+            //video_buffer[col][video_buffer_fill_request][40-1] = 0xfF;
+
+        }else{
+            // no image data region
+            /*for(uint32_t x = 0; x < VIDEO_BUFFER_WIDTH; x++){
+               *video_buffer_ptr++ = 0x0;
+            }*/
+            memset(&video_buffer[color][video_buffer_fill_request][0], 0x0000, VIDEO_BUFFER_WIDTH);
+
+        }
+    }
+#endif
+    if (VIDEO_DEBUG_DURATION_ANIMATION) led_off();
+}
 
 void video_init(void) {
     debug_function_call();
@@ -146,26 +322,14 @@ void video_init(void) {
     led_off();
 
 
+    for (uint8_t y=0; y<VIDEO_CHAR_BUFFER_HEIGHT; y++) {
+        for (uint8_t x=0; x<VIDEO_CHAR_BUFFER_WIDTH; x++) {
+            video_char_buffer[y][x] = 40 + x + y;
+        }
+    }
+
   //  video_dma_prepare();
 
-uint32_t data = 0;
-uint32_t logo_start_line = 625/2 - LOGO_HEIGHT/2;
-uint32_t logo_end_line   = 625/2 + LOGO_HEIGHT/2;
-
-uint32_t logo_offset_x;
-if (LOGO_WIDTH <= VIDEO_BUFFER_WIDTH) {
-    logo_offset_x = 0;
-}else{
-    logo_offset_x = VIDEO_BUFFER_WIDTH/2 - LOGO_WIDTH/8/2;
-}
-uint32_t logo_offset;
-uint8_t *logo_ptr;
-uint8_t *framebuffer_ptr;
-uint8_t *video_buffer_ptr;
-uint8_t *video_buffer_end_ptr;
-
-uint32_t ani_count = 0;
-uint32_t ani_dir   = 0;
 
 /*while(1){
 
@@ -187,100 +351,18 @@ uint32_t ani_dir   = 0;
 }
 while(1);
 */
-uint8_t div =0;
 while(1){
 
 
     if (video_buffer_fill_request != VIDEO_BUFFER_FILL_REQUEST_IDLE) {
-        if (video_line == 2) {
-            if (div++ >= 0){
-                ani_count+=4;
-                if (ani_count >=360) {
-                    ani_count -= 360;
-                }
-                div = 0;
-            }
-        }
-        //ani_count = 170;
 
-        uint32_t scale;
-        if (ani_count < 90) {
-            scale   = video_cos_table[ani_count];
-            ani_dir = 0;
-        }else if (ani_count < 180) {
-            scale   = video_cos_table[180 - ani_count];
-            ani_dir = 1;
-        }else if (ani_count < 270) {
-            scale   = video_cos_table[ani_count - 180];
-            ani_dir = 1;
+        if ((video_line > 18*5*2)){ // && (video_line < 18*6*2+200)){
+            video_render_ani();
         }else{
-            scale   = video_cos_table[360 - ani_count];
-            ani_dir = 0;
+            // render text
+            video_render_text();
         }
 
-        // we have a new request, osd is rendering the other page now,
-        // time to prepare the next page!
-        //debug("filling page "); debug_put_uint8(video_buffer_fill_request); debug_put_newline();
-
-        // calculate line number:
-        uint32_t line    = video_line + 2;
-
-        logo_start_line = 625/2 - (scale * LOGO_HEIGHT/2) / 128;
-        logo_end_line   = 625/2 + (scale * LOGO_HEIGHT/2) / 128;
-
-        logo_offset = (line - logo_start_line) * 128 / scale * (LOGO_WIDTH/8);
-
-        if (!ani_dir) {
-            // flip on neg rotation
-            logo_offset = LOGO_HEIGHT*LOGO_WIDTH/8 - logo_offset;
-        }
-
-        uint32_t max_len = min((LOGO_WIDTH/8), (VIDEO_BUFFER_WIDTH - logo_offset_x));
-#if 1
-
-        // fill the next line of data now:
-        for(uint8_t col = 0; col < 2; col++){
-
-            //for(uint8_t i=0; i<VIDEO_BUFFER_WIDTH/2; i++){
-//                video_buffer[col][video_buffer_fill_request][i] = 0x0000;
-//            }
-
-            // [0] = white, [1] = black data
-            // fetch correct buffer ptr
-            video_buffer_ptr     = (uint8_t*) &video_buffer[col][video_buffer_fill_request][0];
-            video_buffer_end_ptr = video_buffer_ptr + VIDEO_BUFFER_WIDTH - 4; //(uint8_t*) &video_buffer[col][video_buffer_fill_request][VIDEO_BUFFER_WIDTH/2-2];
-
-            logo_ptr = &logo_data[col][logo_offset];
-
-            // black data has to be shifted one byte
-            if (!col) video_buffer_ptr++;
-            //video_buffer_ptr += logo_offset_x;
-
-
-            if ((line > logo_start_line) && (line < logo_end_line)){
-
-                for (uint32_t i = 0; i < logo_offset_x; i++){
-                    *video_buffer_ptr++ = 0x0;
-                }
-
-                for(uint32_t i = 0; i < max_len; i++){
-                   *video_buffer_ptr++ = *logo_ptr++;
-                }
-NEEDS FURTHER SPEED OPT!
-                //while(video_buffer_ptr < video_buffer_end_ptr){
-                  //  *video_buffer_ptr++ = 0x0;
-                //}
-
-                //video_buffer[col][video_buffer_fill_request][40-1] = 0xfF;
-
-            }else{
-                // no image data region
-                for(uint32_t x = 0; x < VIDEO_BUFFER_WIDTH; x++){
-                   *video_buffer_ptr++ = 0x0;
-                }
-            }
-        }
-#endif
         video_buffer[0][video_buffer_fill_request][VIDEO_BUFFER_WIDTH/2-1] = 0x00FF;
 
         // clear request
@@ -355,7 +437,7 @@ static void video_init_spi_single(uint32_t spi) {
 
     // set up spi
     // - master mode
-    // - baud prescaler = apb_clk/2 = 24/2 = 12MHz!
+    // - baud prescaler = apb_clk/2 = 48/2 = 24MHz!
     // - CPOL low
     // - CPHA 1
     // - 8 bit crc (?)
@@ -412,6 +494,10 @@ void DMA1_CHANNEL4_5_IRQHandler(void) {
     //TIMER_CLEAR_DMA_ON_COMPARE_EVENT(TIM1);
     TIMER_CLEAR_FLAG(TIM1, TIM_SR_CC1IF | TIM_SR_CC4IF);
     TIMER_DISABLE_IRQ(TIM1, TIM_DIER_CC1DE | TIM_DIER_CC4DE);
+
+    // prepare next page:
+    video_buffer_page         = 1 - video_buffer_page;
+    video_buffer_fill_request = video_buffer_page;
 
     return;
 }
@@ -594,74 +680,6 @@ void video_dma_prepare() {
 
 }
 
-#if 0
-// waking up from sleep mode is quite deterministic
-// disable all interrupts except tim1 compare2 int
-void pend_sv_handler(void) {
-    ///led_toggle();
-    //debug("sleeping\n");
-
-    // disable all irqs EXCPET CC match here!
-    //nvic_disable_irq(VIDEO_COMP_EXTI_IRQN);
-
-    timer_enable_irq(TIM1, TIM_DIER_CC2IE);
-    nvic_set_priority(NVIC_TIM1_CC_IRQ, NVIC_PRIO_TIMER1);
-    nvic_enable_irq(NVIC_TIM1_CC_IRQ);
-
-    // Clear pendSV flag
-    SCB_ICSR |= SCB_ICSR_PENDSVCLR;
-
-    // do NOT deep sleep...
-    SCB_SCR &= ~SCB_SCR_SLEEPDEEP_Msk;
-
-    //SCB_SCR |= SCB_SCR_SEVEONPEND;
-    //SCB_SCR |= SCB_SCR_SLEEPONEXIT;
-    /*uint32_t s_ = 0;
-    while(1){
-        uint32_t s = TIM1_SR & (1<<2);
-        if (s!= s_){
-            debug_put_hex32(s);
-            debug_put_newline();
-        }
-        s_ = s;
-    }*/
-    //debug_put_hex32(TIM1_SR & (1<<2));
-
-    /*uint32_t i;
-    for(i=0; i<10; i++) debug_put_hex32(TIM1_SR & (1<<2));*/
-
-    // sleep now!
-    led_off();
-    __WFI();
-    //__asm__("wfe");
-
-
-    //why does cc int not trigger resume?
-
-    led_on();
-
-    //debug("AWAKE\n");
-    //while(1) led_toggle();
-
-    // re-enable all irqs
-   // nvic_enable_irq(VIDEO_COMP_EXTI_IRQN);
-}
-#endif
-
-
-void video_dma_trigger(void) {
-    // debug_function_call();
-
-    // trigger the SPI TX + RX dma
-    spi_enable_tx_dma(VIDEO_SPI_WHITE);
-
-    // wait for completion
-    //while (!dma_get_interrupt_flag(VIDEO_DMA_WHITE, VIDEO_DMA_CHANNEL_WHITE, DMA_TCIF)) {}
-
-    // disable DMA
-    //dma_disable_channel(VIDEO_DMA_WHITE, VIDEO_DMA_CHANNEL_WHITE);
-}
-
 static void video_init_rcc(void) {
     debug_function_call();
 
@@ -840,18 +858,6 @@ void ADC_COMP_IRQHandler(void) {
         if ((pulse_len > VIDEO_SYNC_VSYNC_MIN) && (pulse_len < VIDEO_SYNC_VSYNC_MAX)) {
             // this was the last half line -> hsync!
             video_field = VIDEO_FIRST_FIELD;
-            //led_on();
-            // spi_send(VIDEO_SPI_WHITE, 0x7FF7);
-
-            // timer_set_dma_on_update_event(TIM1);
-
-            // timer_enable_oc_output(TIM1, TIM_OC2);
-            // timer_disable_oc_clear(TIM1, TIM_OC2);
-            // timer_set_oc_slow_mode(TIM1, TIM_OC2);
-            // timer_set_oc_mode(TIM1, TIM_OC2, TIM_OCM_TOGGLE);
-            //
-            // video_dma_trigger();
-           // timer_disable_preload(TIM1);
         }
     } else  {
         // rising edge -> this was measuring the a sync part
@@ -868,57 +874,17 @@ void ADC_COMP_IRQHandler(void) {
             // video_dma_trigger();
 
             //debug_put_uint16((current_compare_value + _US_TO_CLOCKS(10)) - TIM1_CNT ); debug_put_newline();
-            current_compare_value += _US_TO_CLOCKS(6);
+            current_compare_value += _US_TO_CLOCKS(6+1);
 
             //uint32_t ccval = current_compare_value +100; // _US_TO_CLOCKS(15);
-            TIM_CCR1(TIM1) = current_compare_value; // correct for offset by different dma access time
-            TIM_CCR4(TIM1) = current_compare_value+32;
+            TIM_CCR1(TIM1) = current_compare_value;
+            TIM_CCR4(TIM1) = current_compare_value + 2*16; // correct for offset by different dma access time
 
-            led_on();
-
-            // disable dma during config
-            //DMA_DISABLE_CHANNEL(VIDEO_DMA_WHITE, DMA_CHANNEL2)
-            //DMA_DISABLE_CHANNEL(VIDEO_DMA_WHITE, DMA_CHANNEL3);
-            //DMA_DISABLE_CHANNEL(VIDEO_DMA_BLACK, DMA_CHANNEL4);
-            //DMA_DISABLE_CHANNEL(VIDEO_DMA_BLACK, DMA_CHANNEL5);
-
-
-            //clear pending dma transfers
-  //          SPI_CR2(SPI1) &= ~SPI_CR2_TXDMAEN;
-//            SPI_CR2(SPI2) &= ~SPI_CR2_TXDMAEN;
-
-            // prepare to send tx trigger
-            //video_spi_cr_trigger = SPI_CR2(SPI1) | SPI_CR2_TXDMAEN;
-            //dma_set_memory_address(VIDEO_DMA_WHITE, DMA_CHANNEL2, (uint32_t)&(video_spi_cr_trigger));
-            //DMA_SET_NUMBER_OF_DATA(VIDEO_DMA_WHITE, DMA_CHANNEL2, 1);
-
-            //video_spi_cr_trigger_b = SPI_CR2(SPI1) | SPI_CR2_TXDMAEN;
-            //dma_set_memory_address(VIDEO_DMA_WHITE, DMA_CHANNEL4, (uint32_t)&(video_spi_cr_trigger_b));
-  //          DMA_SET_NUMBER_OF_DATA(VIDEO_DMA_BLACK, DMA_CHANNEL4, 1);
-//
-            // prepare next page:
-            video_buffer_page         = 1 - video_buffer_page;
-            video_buffer_fill_request = video_buffer_page;
-
-            // prepare to send dma spi data
-            //DMA_SET_MEMORY_ADDRES_NOCHECK(VIDEO_DMA_WHITE, DMA_CHANNEL3, &(video_buffer[0][video_buffer_page]));
-            //DMA_SET_NUMBER_OF_DATA(VIDEO_DMA_WHITE, DMA_CHANNEL3, VIDEO_BUFFER_WIDTH);
-
-            //DMA_SET_MEMORY_ADDRES_NOCHECK(VIDEO_DMA_BLACK, DMA_CHANNEL5, &(video_buffer[1][video_buffer_page]));
-            //DMA_SET_NUMBER_OF_DATA(VIDEO_DMA_BLACK, DMA_CHANNEL5, VIDEO_BUFFER_WIDTH);
-
-            // clear all dma if
-            // NOT NECESSARY? move to define if enable is necc...
-           //  dma_clear_interrupt_flags(VIDEO_DMA_WHITE, VIDEO_DMA_CHANNEL_WHITE, DMA_TCIF);
-
-            // clear pending dma request from timer
-
-            // disable and re-enable DMA on timer match in order to clear pending timer triggers
-            //TIMER_DISABLE_IRQ(TIM1, TIM_DIER_CC1DE | TIM_DIER_CC4DE);
-            //TIMER_CLEAR_FLAG(TIM1, TIM_SR_CC1IF | TIM_SR_CC4IF);
-
+            if (VIDEO_DEBUG_DMA) led_on();
 
             TIMER_ENABLE_IRQ(TIM1, TIM_DIER_CC1DE | TIM_DIER_CC4DE | TIM_DIER_CC4IE);
+
+            if (VIDEO_DEBUG_DMA) TIMER_ENABLE_IRQ(TIM1, TIM_DIER_CC4IE);
 
             // enable dma channel
             // this was set up during the dma end of tx int
@@ -927,59 +893,15 @@ void ADC_COMP_IRQHandler(void) {
             DMA_ENABLE_CHANNEL(VIDEO_DMA_BLACK, DMA_CHANNEL4);
             DMA_ENABLE_CHANNEL(VIDEO_DMA_BLACK, DMA_CHANNEL5);
 
-#if 0
-            // prepare next page:
-            video_buffer_fill_request = video_buffer_page;
-            video_buffer_page         = 1 - video_buffer_page;
+            if (VIDEO_DEBUG_DMA) led_off();
 
-            DMA_DISABLE_CHANNEL(VIDEO_DMA_BLACK, DMA_CHANNEL4);
-            DMA_DISABLE_CHANNEL(VIDEO_DMA_BLACK, DMA_CHANNEL5);
-
-
-            SPI_CR2(SPI1) &= ~SPI_CR2_TXDMAEN;
-            SPI_CR2(SPI2) &= ~SPI_CR2_TXDMAEN;
-
-            TIMER_DISABLE_IRQ(TIM1, TIM_DIER_CC1DE | TIM_DIER_CC4DE);
-
-            TIMER_ENABLE_IRQ(TIM1, TIM_DIER_CC4DE);
-            TIMER_ENABLE_IRQ(TIM1, TIM_DIER_CC4IE);
-
-
-            DMA_ENABLE_CHANNEL(VIDEO_DMA_BLACK, DMA_CHANNEL4);
-            DMA_ENABLE_CHANNEL(VIDEO_DMA_BLACK, DMA_CHANNEL5);
-
-#endif
-            led_off();
             // increment video field
             video_line += 2;
 
-            // TX: transfer buffer to slave
-            //dma_set_memory_address(VIDEO_DMA_WHITE, VIDEO_DMA_CHANNEL_WHITE, (uint32_t)video_buffer[0]);
-            //dma_set_number_of_data(VIDEO_DMA_WHITE, VIDEO_DMA_CHANNEL_WHITE, VIDEO_BUFFER_WIDTH-1);
-
-            // clear pending dma request from timer
-
-
-            // enable dma channel
-            //dma_enable_channel(VIDEO_DMA_WHITE, VIDEO_DMA_CHANNEL_WHITE);
-
-            /*timer_clear_flag(TIM1, TIM_SR_CC2IF);
-*/
-            //
-/*            timer_set_oc_value(TIM1, TIM_OC2, TIM1_CNT + 60); //current_compare_value+150);
-delay_us(45000);
-while (!dma_get_interrupt_flag(VIDEO_DMA_WHITE, VIDEO_DMA_CHANNEL_WHITE, DMA_TCIF)) {}
-
-// disable DMA
-dma_disable_channel(VIDEO_DMA_WHITE, VIDEO_DMA_CHANNEL_WHITE);
-*/
             // prepare for the next field
             video_field = 1 - VIDEO_FIRST_FIELD;
         } else {
             // this is a broad sync
-            // prepare video transmission
-            // configure timer compare match output
-            // video_dma_trigger();
         }
     }
 

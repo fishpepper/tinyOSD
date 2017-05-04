@@ -49,8 +49,8 @@ void clocksource_hse_in_8_out_48(void) {
 
     // set prescalers for AHB, ADC, ABP1, ABP2.
     // Do this before touching the PLL
-    rcc_set_hpre(RCC_CFGR_HPRE_NODIV);      // 48Mhz (max 72)
-    rcc_set_ppre(RCC_CFGR_PPRE_DIV2);       // 24Mhz (max 36)
+    rcc_set_hpre(RCC_CFGR_HPRE_NODIV);      // 48Mhz (max 48)
+    rcc_set_ppre(RCC_CFGR_PPRE_DIV2);       // 24Mhz (max 48)
 
     // sysclk runs with 48MHz -> 1 waitstates.
     // * 0WS from 0-24MHz
@@ -79,6 +79,6 @@ void clocksource_hse_in_8_out_48(void) {
 
     // When PPRE is set to something != NODIV
     // TIM input clock is apb clkspeed*2 (see RM00091 p98)
-    rcc_timer_frequency = 2*rcc_apb1_frequency;
+    //rcc_timer_frequency = 2*rcc_apb1_frequency;
 }
 
