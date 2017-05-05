@@ -31,7 +31,10 @@ void video_init(void);
 #define VIDEO_LINE_LEN            63.556  // us
 #define VIDEO_SYNC_SHORT           2.000  // us
 #define VIDEO_SYNC_HSYNC           4.700  // us
-#define VIDEO_FIRST_FIELD          1      // ODD (NTSC)
+#define VIDEO_FIELD_ODD            1
+#define VIDEO_FIELD_EVEN           (1-VIDEO_FIELD_ODD)
+#define VIDEO_FIRST_FIELD          VIDEO_FIELD_ODD     // ODD (NTSC)
+#define VIDEO_SECOND_FIELD         (1-(VIDEO_FIRST_FIELD))
 
 // timing for high level (from shortest to longest period)
 // (1) [HI] BROAD SYNC: t ~ VIDEO_SYNC_HSYNC

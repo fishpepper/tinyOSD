@@ -63,12 +63,12 @@ static void video_dma_trigger(void);
 static void video_set_dac_value_mv(uint16_t target);
 static void video_set_dac_value_raw(uint16_t target);
 
-#define VIDEO_BUFFER_WIDTH (2*36) //66 // max should be ~68
+#define VIDEO_BUFFER_WIDTH (2*38) //66 // max should be ~68
 //volatile uint8_t video_buffer[2][2][VIDEO_BUFFER_WIDTH+1];
 volatile uint16_t video_buffer[2][2][VIDEO_BUFFER_WIDTH/2];
 
-#define VIDEO_CHAR_BUFFER_WIDTH  32
-#define VIDEO_CHAR_BUFFER_HEIGHT 30
+#define VIDEO_CHAR_BUFFER_WIDTH  35  // THIS SHALL NEVER EXCEED VIDEO_BUFFER_WIDTH/2-3 !
+#define VIDEO_CHAR_BUFFER_HEIGHT 13
 uint8_t video_char_buffer[VIDEO_CHAR_BUFFER_HEIGHT][VIDEO_CHAR_BUFFER_WIDTH];
 
 volatile uint32_t video_dbg;
@@ -108,21 +108,27 @@ static const uint32_t video_cos_table[90] = {
 0x16,0x14,0x11,0xf,0xd,0xb,0x9,0x6,
 0x4,0x2};
 
-void video_render_text(void) {
+void video_render_text(uint16_t visible_line) {
     if (VIDEO_DEBUG_DURATION_TEXTLINE) led_on();
+    uint32_t line    = visible_line / 2; // even and odd lines get the same data
 
-#define VIDEO_EMPTY_LINES 50
-    if (video_line < VIDEO_EMPTY_LINES) {
-        memset(&video_buffer[0][video_buffer_fill_request][0], 0x0000, VIDEO_BUFFER_WIDTH);
-        memset(&video_buffer[1][video_buffer_fill_request][0], 0x0000, VIDEO_BUFFER_WIDTH);
-
-        return;
-    }
-    uint32_t line    = (video_line + 2 - VIDEO_EMPTY_LINES )/2;
     uint8_t text_row = (line / 18);
     uint8_t font_row = line % 18;
 
+    // fill empty
+    /*uint32_t *p = &video_buffer[0][video_buffer_fill_request][0];
+    uint32_t *q = &video_buffer[1][video_buffer_fill_request][0];
+    for(uint8_t i=0; i<VIDEO_BUFFER_WIDTH/4; i++){
+        *p++ = 0;
+        *q++ = 0;
+    }*/
+    //memset(&video_buffer[0][video_buffer_fill_request][0], 0, VIDEO_BUFFER_WIDTH);
+    //memset(&video_buffer[1][video_buffer_fill_request][0], 0, VIDEO_BUFFER_WIDTH);
 
+    if (text_row >= VIDEO_CHAR_BUFFER_HEIGHT){
+        // no data
+        return;
+    }
 
 //    for (uint8_t color = 0; color < 1; color++){
 
@@ -135,38 +141,33 @@ void video_render_text(void) {
 
 
         uint8_t *char_ptr = &video_char_buffer[text_row][0];
-uint8_t tmp=0;
-        for (uint8_t text_col = 0; text_col < VIDEO_CHAR_BUFFER_WIDTH; text_col++) {
-            //uint32_t c = 48 + video_char_buffer[text_row][text_col];
-            uint16_t index = *char_ptr++; //video_char_buffer[text_row][text_col]; //(*char_ptr++);
+        uint8_t tmp=0;
 
-            // fetch ptr to font data
-            //uint16_t index = video_char_buffer[text_row][text_col]*3;
-            uint8_t *font_ptr = (uint8_t*)&font_data[0][font_row][index*2];
+        uint8_t *font_ptr_row = (uint8_t*)&font_data[0][font_row][0];
 
-            *video_buffer_ptr[0]++ = *font_ptr++;
-            *video_buffer_ptr[0]++ = *font_ptr++;
+        for (uint32_t text_col = 0; text_col < VIDEO_CHAR_BUFFER_WIDTH; text_col++) {
+                uint32_t index = *char_ptr++; //video_char_buffer[text_row][text_col]; //(*char_ptr++);
 
-            font_ptr = (uint8_t*)&font_data[1][font_row][index*2];
+                // fetch ptr to font data
+                //uint16_t index = video_char_buffer[text_row][text_col]*3;
+                uint8_t *font_ptr = font_ptr_row + index*2;
 
-            *video_buffer_ptr[1]++ = (*font_ptr++);
-            *video_buffer_ptr[1]++ = (*font_ptr++);
+                *video_buffer_ptr[0]++ = *font_ptr++;
+                *video_buffer_ptr[0]++ = *font_ptr++;
 
-            //*video_buffer_ptr[1]++  = *font_ptr++;
-            //font_ptr++;
-            //*video_buffer_ptr[0]++  = ((*font_ptr++)&0xF0)>>4;
-            //*video_buffer_ptr[1]++  = *font_ptr++;
-            //font_ptr++;
-            //*video_buffer_ptr[0]++  = ((*font_ptr)&0xF0)>>4;
-            //*video_buffer_ptr[1]++  = *font_ptr;
-            //font_ptr++;
+                // get black font data:
+                font_ptr += sizeof(font_data[0])-2; //(uint8_t*)&font_data[1][font_row][index*2];
+
+                *video_buffer_ptr[1]++ = (*font_ptr++);
+                *video_buffer_ptr[1]++ = (*font_ptr++);
 
         }
-
   //  }
 
     if (VIDEO_DEBUG_DURATION_TEXTLINE) led_off();
 }
+
+
 uint32_t ani_count=0;
 uint32_t ani_dir=0;
 uint8_t div=0;
@@ -312,7 +313,7 @@ void video_init(void) {
     video_init_spi();
     video_init_spi_dma();
 
-    video_set_dac_value_mv(80);
+    video_set_dac_value_mv(180);
 
     video_init_timer();
 
@@ -365,11 +366,36 @@ void video_init(void) {
 }
 while(1);
 */
+    uint16_t l=0;
 while(1){
 
 
     if (video_buffer_fill_request != VIDEO_BUFFER_FILL_REQUEST_IDLE) {
+#if 1
 
+//NTSC
+#define VIDEO_FIRST_ACTIVE_LINE 40
+#define VIDEO_LAST_ACTIVE_LINE  516
+
+        if ((video_line < VIDEO_FIRST_ACTIVE_LINE) || (video_line > VIDEO_LAST_ACTIVE_LINE)){
+            // no data line, set to unactive
+            memset(&video_buffer[0][video_buffer_fill_request][0], 0, VIDEO_BUFFER_WIDTH);
+            memset(&video_buffer[1][video_buffer_fill_request][0], 0, VIDEO_BUFFER_WIDTH);
+        }else{
+            //visible line number:
+            uint16_t visible_line = video_line - VIDEO_FIRST_ACTIVE_LINE;
+            video_render_text(visible_line);
+        }
+
+
+
+        // make sure the last 4 bytes are always disabled
+        // why four bytes? fifo ? todo: check this
+        video_buffer[0][video_buffer_fill_request][VIDEO_BUFFER_WIDTH/2-2] = 0;
+        video_buffer[0][video_buffer_fill_request][VIDEO_BUFFER_WIDTH/2-1] = 0;
+        video_buffer[1][video_buffer_fill_request][VIDEO_BUFFER_WIDTH/2-2] = 0;
+        video_buffer[1][video_buffer_fill_request][VIDEO_BUFFER_WIDTH/2-1] = 0;
+#else
         if ((video_line < 23) || (video_line > 240*2)) {
             // no video allowed
             memset(&video_buffer[0][video_buffer_fill_request][0], 0x0000, VIDEO_BUFFER_WIDTH);
@@ -385,7 +411,7 @@ while(1){
         //if ((video_line > 10) && (video_line < 300)) video_buffer[0][video_buffer_fill_request][VIDEO_BUFFER_WIDTH/2-1] = 0x00FF;
 
     //video_buffer[0][video_buffer_fill_request][VIDEO_BUFFER_WIDTH/2-1] = 0x00FF;
-
+#endif
         // clear request
         video_buffer_fill_request = VIDEO_BUFFER_FILL_REQUEST_IDLE;
         //debug("ok\n");
@@ -879,14 +905,22 @@ void ADC_COMP_IRQHandler(void) {
         // falling edge -> this was measuring the field length
         if ((pulse_len > VIDEO_SYNC_VSYNC_MIN) && (pulse_len < VIDEO_SYNC_VSYNC_MAX)) {
             // this was the last half line -> hsync!
-            video_field = VIDEO_FIRST_FIELD;
+            video_field = VIDEO_SECOND_FIELD;
         }
     } else  {
         // rising edge -> this was measuring the a sync part
         if (pulse_len < VIDEO_SYNC_SHORT_MAX) {
             // all short sync pulses are shortsyncs
             // new (half)frame -> init line counter
-            video_line = video_field;
+            // video start at sync 20 on even and odd, as we count different
+            // init to the right values here:
+            if (video_field == VIDEO_FIELD_ODD) {
+                // odd
+                video_line = 15;
+            } else {
+                // even
+                video_line = 14;
+            }
 
 
         } else if (pulse_len < VIDEO_SYNC_HSYNC_MAX) {
@@ -896,7 +930,7 @@ void ADC_COMP_IRQHandler(void) {
             // video_dma_trigger();
 
             //debug_put_uint16((current_compare_value + _US_TO_CLOCKS(10)) - TIM1_CNT ); debug_put_newline();
-            current_compare_value += _US_TO_CLOCKS(6+1);
+            current_compare_value += _US_TO_CLOCKS(6+0);
 
             //uint32_t ccval = current_compare_value +100; // _US_TO_CLOCKS(15);
             TIM_CCR1(TIM1) = current_compare_value;
@@ -921,7 +955,7 @@ void ADC_COMP_IRQHandler(void) {
             video_line += 2;
 
             // prepare for the next field
-            video_field = 1 - VIDEO_FIRST_FIELD;
+            video_field = VIDEO_FIRST_FIELD;
         } else {
             // this is a broad sync
         }
