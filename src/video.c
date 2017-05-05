@@ -84,6 +84,13 @@ volatile uint32_t video_buffer_fill_request;
 volatile uint32_t video_buffer_page;
 #define VIDEO_BUFFER_FILL_REQUEST_IDLE 3
 
+//NTSC
+#define VIDEO_FIRST_ACTIVE_LINE 40
+#define VIDEO_LAST_ACTIVE_LINE  516
+#define VIDEO_CENTER_ACTIVE_LINE ((VIDEO_LAST_ACTIVE_LINE - VIDEO_FIRST_ACTIVE_LINE) / 2)
+
+#define VIDEO_START_LINE_ANIMATION (VIDEO_CENTER_ACTIVE_LINE - LOGO_HEIGHT/2)
+#define VIDEO_END_LINE_ANIMATION (VIDEO_CENTER_ACTIVE_LINE + LOGO_HEIGHT/2)
 
 // void TIM1_CC_IRQHandler(void) {
 void TIM1_CC_IRQHandler(void) {
@@ -172,12 +179,12 @@ uint32_t ani_count=0;
 uint32_t ani_dir=0;
 uint8_t div=0;
 
-void video_render_ani(void) {
+void video_render_ani(uint16_t visible_line) {
     if (VIDEO_DEBUG_DURATION_ANIMATION) led_on();
 
     uint32_t data = 0;
-    uint32_t logo_start_line = 625/2 - LOGO_HEIGHT/2;
-    uint32_t logo_end_line   = 625/2 + LOGO_HEIGHT/2;
+    uint32_t logo_start_line = VIDEO_CENTER_ACTIVE_LINE - LOGO_HEIGHT/2;
+    uint32_t logo_end_line   = VIDEO_CENTER_ACTIVE_LINE + LOGO_HEIGHT/2;
 
     uint32_t logo_offset_x;
     if (LOGO_WIDTH <= VIDEO_BUFFER_WIDTH) {
@@ -193,7 +200,7 @@ void video_render_ani(void) {
 
 
 
-    if (video_line == 202) {
+    if (visible_line == VIDEO_CENTER_ACTIVE_LINE) {
         ani_count+=4;
         if (ani_count >=360) {
             ani_count -= 360;
@@ -221,10 +228,10 @@ void video_render_ani(void) {
     //debug("filling page "); debug_put_uint8(video_buffer_fill_request); debug_put_newline();
 
     // calculate line number:
-    uint32_t line    = video_line + 2;
+    uint32_t line    = visible_line + 2;
 
-    logo_start_line = 625/2 - (scale * LOGO_HEIGHT/2) / 128;
-    logo_end_line   = 625/2 + (scale * LOGO_HEIGHT/2) / 128;
+    logo_start_line = VIDEO_CENTER_ACTIVE_LINE - (scale * LOGO_HEIGHT/2) / 128;
+    logo_end_line   = VIDEO_CENTER_ACTIVE_LINE + (scale * LOGO_HEIGHT/2) / 128;
 
     logo_offset = (line - logo_start_line) * 128 / scale * (LOGO_WIDTH/8);
 
@@ -264,16 +271,16 @@ void video_render_ani(void) {
             memset(video_buffer_ptr, 0, logo_offset_x);
             video_buffer_ptr+=logo_offset_x;
             memcpy(video_buffer_ptr, logo_ptr, max_len);
-
+            video_buffer_ptr+=max_len;
 
 /*
             for(uint32_t i = 0; i < max_len; i++){
                *video_buffer_ptr++ = *logo_ptr++;
             }*/
 
-            //while(video_buffer_ptr < video_buffer_end_ptr){
-              //  *video_buffer_ptr++ = 0x0;
-            //}
+            while(video_buffer_ptr < video_buffer_end_ptr){
+                *video_buffer_ptr++ = 0x0;
+            }
 
             //video_buffer[col][video_buffer_fill_request][40-1] = 0xfF;
 
@@ -373,9 +380,7 @@ while(1){
     if (video_buffer_fill_request != VIDEO_BUFFER_FILL_REQUEST_IDLE) {
 #if 1
 
-//NTSC
-#define VIDEO_FIRST_ACTIVE_LINE 40
-#define VIDEO_LAST_ACTIVE_LINE  516
+
 
         if ((video_line < VIDEO_FIRST_ACTIVE_LINE) || (video_line > VIDEO_LAST_ACTIVE_LINE)){
             // no data line, set to unactive
@@ -384,7 +389,11 @@ while(1){
         }else{
             //visible line number:
             uint16_t visible_line = video_line - VIDEO_FIRST_ACTIVE_LINE;
-            video_render_text(visible_line);
+            if ((visible_line > VIDEO_START_LINE_ANIMATION) && (visible_line < VIDEO_END_LINE_ANIMATION)) {
+                video_render_ani(visible_line);
+            }else{
+                video_render_text(visible_line);
+            }
         }
 
 
