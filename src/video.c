@@ -79,6 +79,8 @@ volatile uint16_t video_sync_last_compare_value;
 volatile uint32_t video_spi_cr_trigger;
 volatile uint32_t video_spi_cr_trigger_b;
 
+volatile uint32_t video_unprocessed_frame_sent;
+volatile uint32_t video_unprocessed_frame_count;
 
 volatile uint32_t video_buffer_fill_request;
 volatile uint32_t video_buffer_page;
@@ -153,6 +155,8 @@ void video_render_text(uint16_t visible_line) {
         uint8_t *font_ptr_row = (uint8_t*)&font_data[0][font_row][0];
 
         for (uint32_t text_col = 0; text_col < VIDEO_CHAR_BUFFER_WIDTH; text_col++) {
+            //use manual loop unrolling here, subtract char ptr and add etc
+
                 uint32_t index = *char_ptr++; //video_char_buffer[text_row][text_col]; //(*char_ptr++);
 
                 // fetch ptr to font data
@@ -168,6 +172,7 @@ void video_render_text(uint16_t visible_line) {
                 *video_buffer_ptr[1]++ = (*font_ptr++);
                 *video_buffer_ptr[1]++ = (*font_ptr++);
 
+                font_ptr -= 4;
         }
   //  }
 
@@ -339,16 +344,17 @@ void video_init(void) {
 
     for (uint8_t y=0; y<VIDEO_CHAR_BUFFER_HEIGHT; y++) {
         for (uint8_t x=0; x<VIDEO_CHAR_BUFFER_WIDTH; x++) {
-            video_char_buffer[y][x] = 0 + x + y;
+            video_char_buffer[y][x] = ' ';
         }
     }
 
-    video_char_buffer[1][20+0] = 32 + 'H' - 'A';
-    video_char_buffer[1][20+1] = 32 + 'E' - 'A';
-    video_char_buffer[1][20+2] = 32 + 'L' - 'A';
-    video_char_buffer[1][20+3] = 32 + 'L' - 'A';
-    video_char_buffer[1][20+4] = 32 + 'O' - 'A';
-    video_char_buffer[1][20+5] = 0;
+    for (uint8_t x=0; x<VIDEO_CHAR_BUFFER_WIDTH; x++) {
+        video_char_buffer[VIDEO_CHAR_BUFFER_HEIGHT-1][x] = '0' + x;
+    }
+
+
+
+    video_unprocessed_frame_count = 0;
 
   //  video_dma_prepare();
 
@@ -374,10 +380,20 @@ void video_init(void) {
 while(1);
 */
     uint16_t l=0;
-while(1){
+    uint32_t current_frame;
 
+while(1){
+    // show some stats:
+    if (video_line == VIDEO_FIRST_ACTIVE_LINE-1){
+            //led_on();
+            video_put_uint16(&video_char_buffer[1][0], video_unprocessed_frame_count);
+            //led_off();
+    }
 
     if (video_buffer_fill_request != VIDEO_BUFFER_FILL_REQUEST_IDLE) {
+        current_frame = video_buffer_fill_request;
+
+
 #if 1
 
 
@@ -389,6 +405,7 @@ while(1){
         }else{
             //visible line number:
             uint16_t visible_line = video_line - VIDEO_FIRST_ACTIVE_LINE;
+
             if ((visible_line > VIDEO_START_LINE_ANIMATION) && (visible_line < VIDEO_END_LINE_ANIMATION)) {
                 video_render_ani(visible_line);
             }else{
@@ -421,6 +438,12 @@ while(1){
 
     //video_buffer[0][video_buffer_fill_request][VIDEO_BUFFER_WIDTH/2-1] = 0x00FF;
 #endif
+
+        // if the frame was sent in between, increment unprocessed frame counter
+        if (video_buffer_fill_request != current_frame) {
+            video_unprocessed_frame_count++;
+        }
+
         // clear request
         video_buffer_fill_request = VIDEO_BUFFER_FILL_REQUEST_IDLE;
         //debug("ok\n");
@@ -951,8 +974,7 @@ void ADC_COMP_IRQHandler(void) {
 
             if (VIDEO_DEBUG_DMA) TIMER_ENABLE_IRQ(TIM1, TIM_DIER_CC4IE);
 
-            // enable dma channel
-            // this was set up during the dma end of tx int
+            // enable dma channel, this was set up during the dma end of tx int
             DMA_ENABLE_CHANNEL(VIDEO_DMA_WHITE, DMA_CHANNEL2);
             DMA_ENABLE_CHANNEL(VIDEO_DMA_WHITE, DMA_CHANNEL3);
             DMA_ENABLE_CHANNEL(VIDEO_DMA_BLACK, DMA_CHANNEL4);
@@ -1010,5 +1032,28 @@ static void video_set_dac_value_raw(uint16_t target) {
 
     dac_load_data_buffer_single(target, RIGHT12, CHANNEL_1);
     dac_software_trigger(CHANNEL_1);
+}
+
+
+// output an unsigned 16-bit number to uart
+void video_put_uint16(uint8_t *buffer, uint16_t val) {
+    uint8_t tmp;
+    uint8_t l = 0;
+    uint32_t mul;
+    // loop unrolling is better(no int16 arithmetic)
+    for (mul = 10000; mul>0; mul = mul/10) {
+        l = 0;
+        tmp = '0';
+        while (val >= mul) {
+                val -= mul;
+                tmp++;
+                l = 1;
+        }
+        if ((l == 0) && (tmp == '0') && (mul!=1)) {
+                *buffer++ = '0';
+        } else {
+                *buffer++ = tmp;
+        }
+    }
 }
 

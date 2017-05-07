@@ -89,4 +89,6 @@ void video_init(void);
 #define TIMER_CLEAR_DMA_ON_COMPARE_EVENT(_tim) {  TIM_CR2(_tim) |= TIM_CR2_CCDS; }
 
 
+void video_put_uint16(uint8_t *buffer, uint16_t val);
+
 #endif  // VIDEO_H_

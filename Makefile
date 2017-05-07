@@ -82,6 +82,7 @@ TGT_CFLAGS	+= -Wextra -Wshadow -Wimplicit-function-declaration
 TGT_CFLAGS	+= -Wredundant-decls -Wmissing-prototypes -Wstrict-prototypes
 TGT_CFLAGS	+= -fno-common -ffunction-sections -fdata-sections
 TGT_CFLAGS      += -MD -Wall -Wundef
+TGT_CFLAGS      += -funroll-loops
 TGT_CFLAGS      += $(DEFS)
 
 ###############################################################################
