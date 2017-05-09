@@ -117,13 +117,9 @@ static const uint32_t video_cos_table[90] = {
 0x16,0x14,0x11,0xf,0xd,0xb,0x9,0x6,
 0x4,0x2};
 
-void video_render_text(uint16_t visible_line) {
-    if (VIDEO_DEBUG_DURATION_TEXTLINE) led_on();
-    uint32_t line    = visible_line / 2; // even and odd lines get the same data
 
-    uint8_t text_row = (line / 18);
-    uint8_t font_row = line % 18;
-
+//this will run from ram -> faster as there are no waitstates
+__attribute__( ( long_call, section(".data") ) ) test(uint8_t text_row, uint8_t font_row, uint32_t line) {
     // fill empty
     /*uint32_t *p = &video_buffer[0][video_buffer_fill_request][0];
     uint32_t *q = &video_buffer[1][video_buffer_fill_request][0];
@@ -134,10 +130,6 @@ void video_render_text(uint16_t visible_line) {
     //memset(&video_buffer[0][video_buffer_fill_request][0], 0, VIDEO_BUFFER_WIDTH);
     //memset(&video_buffer[1][video_buffer_fill_request][0], 0, VIDEO_BUFFER_WIDTH);
 
-    if (text_row >= VIDEO_CHAR_BUFFER_HEIGHT){
-        // no data
-        return;
-    }
 
 //    for (uint8_t color = 0; color < 1; color++){
 
@@ -175,6 +167,25 @@ void video_render_text(uint16_t visible_line) {
                 font_ptr -= 4;
         }
   //  }
+}
+
+void video_render_text(uint16_t visible_line) {
+    if (VIDEO_DEBUG_DURATION_TEXTLINE) led_on();
+    uint32_t line    = visible_line / 2; // even and odd lines get the same data
+
+    uint8_t text_row = (line / 18);
+    uint8_t font_row = line % 18;
+
+
+
+    if (text_row >= VIDEO_CHAR_BUFFER_HEIGHT){
+        // no data
+        return;
+    }
+
+    test(text_row, font_row, line);
+
+
 
     if (VIDEO_DEBUG_DURATION_TEXTLINE) led_off();
 }
