@@ -164,10 +164,10 @@ void video_render_animation(uint16_t visible_line) {
         logo_offset_x = 34 - LOGO_WIDTH/8/2;
     }
     uint32_t logo_offset;
-    uint8_t *logo_ptr;
+    uint16_t *logo_ptr;
     //uint8_t *framebuffer_ptr;
-    uint8_t *video_buffer_ptr;
-    uint8_t *video_buffer_end_ptr;
+    uint16_t *video_buffer_ptr;
+    uint16_t *video_buffer_end_ptr;
     uint8_t ani_dir;
 
 
@@ -203,7 +203,6 @@ void video_render_animation(uint16_t visible_line) {
 
     logo_start_line = VIDEO_CENTER_ACTIVE_LINE - (scale * LOGO_HEIGHT/2) / 128;
     logo_end_line   = VIDEO_CENTER_ACTIVE_LINE + (scale * LOGO_HEIGHT/2) / 128;
-
     logo_offset = (line - logo_start_line) * 128 / scale * (LOGO_WIDTH/8);
 
     if (!ani_dir) {
@@ -222,24 +221,23 @@ void video_render_animation(uint16_t visible_line) {
 
         // [0] = white, [1] = black data
         // fetch correct buffer ptr
-        video_buffer_ptr     = (uint8_t*) &video_line.buffer[color][video_line.fill_request][0];
+        video_buffer_ptr     = (uint16_t*) &video_line.buffer[color][video_line.fill_request][0];
 
-        video_buffer_end_ptr = video_buffer_ptr + VIDEO_BUFFER_WIDTH - 4; //(uint8_t*) &video_buffer[col][video_buffer_fill_request][VIDEO_BUFFER_WIDTH/2-2];
+        video_buffer_end_ptr = video_buffer_ptr + VIDEO_BUFFER_WIDTH/2 - 4/2; //(uint8_t*) &video_buffer[col][video_buffer_fill_request][VIDEO_BUFFER_WIDTH/2-2];
 
-        logo_ptr = &logo_data[color][logo_offset];
+        logo_ptr = &logo_data16[color][logo_offset/2];
 
 
         if ((line > logo_start_line) && (line < logo_end_line)){
-            if (!color) {
-                // white data has to be shifted one byte with the first byte cleared
-                *video_buffer_ptr++ = 0x00;
+            uint16_t c=0;
+            while(c++ < logo_offset_x/2) {
+                *video_buffer_ptr++ = 0x0000;
             }
 
-            memset(video_buffer_ptr, 0, logo_offset_x);
-            video_buffer_ptr+=logo_offset_x;
-
-            memcpy(video_buffer_ptr, logo_ptr, max_len);
-            video_buffer_ptr+=max_len;
+            c = 0;
+            while(c++ < max_len/2) {
+                *video_buffer_ptr++ = *logo_ptr++;
+            }
 
             //TESTME memset(video_buffer_ptr, 0xAA, video_buffer_end_ptr - video_buffer_ptr - 1);
             while(video_buffer_ptr < video_buffer_end_ptr){

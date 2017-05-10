@@ -121,7 +121,7 @@ while(1){
         video_line.fill_request = VIDEO_BUFFER_FILL_REQUEST_IDLE;
         //debug("ok\n");
 
-        process serial data here
+
     }
 
 };

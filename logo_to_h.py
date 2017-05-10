@@ -87,7 +87,43 @@ out.write("#define LOGO_HEIGHT " + str(height) + "\n")
 out.write("\n")
 
 
-out.write("static const uint8_t logo_data[2][LOGO_HEIGHT * (LOGO_WIDTH/8)] = {\n")
+# generate 16bit logo data:
+image_hwords = [[], []]
+
+for c in range(2):
+    count = 1-c #white is 1 byte shifted
+    hw = 0
+    for x in image_bytes[c]:
+        hw = (hw >> 8) | (x<<8)
+        if (count == 2):
+           image_hwords[c].append(hw)
+           hw = 0
+           count = 0
+        count = count + 1
+
+out.write("static const uint16_t logo_data16[2][LOGO_HEIGHT * (LOGO_WIDTH/8) / 2] = {\n")
+out.write("    {\n        ");
+count = 0
+for x in image_hwords[0]:
+    out.write(hex(x) + ", ")
+    if ((count % 16) == 15):
+        out.write("\n        ")
+    count = count + 1
+
+out.write("\n    }, \n")
+out.write("    {\n        ");
+count = 0
+for x in image_hwords[1]:
+    out.write(hex(x) + ", ")
+    if ((count % 16) == 15):
+        out.write("\n    ")
+    count = count + 1
+
+out.write("\n    }\n};")
+
+
+
+out.write("static const uint8_t logo_data8[2][LOGO_HEIGHT * (LOGO_WIDTH/8)] = {\n")
 out.write("    {\n        ");
 count = 0
 for x in image_bytes[0]:
