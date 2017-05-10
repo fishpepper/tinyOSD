@@ -62,13 +62,15 @@ void video_render_text(uint16_t visible_line) {
     uint8_t text_row = visible_line / 18;
     uint8_t font_row = visible_line % 18;
 
-    if (text_row >= VIDEO_CHAR_BUFFER_HEIGHT){
-        // no data
-        return;
+    if (text_row < VIDEO_CHAR_BUFFER_HEIGHT){
+        // render text
+        // run code from ram, faster as there are no waitstates
+        video_render_text_row(text_row, font_row);
+    } else {
+        // text row is bigger than visible frame, send empty line
+        VIDEO_CLEAR_BUFFER(BLACK, video_line.fill_request);
+        VIDEO_CLEAR_BUFFER(WHITE, video_line.fill_request);
     }
-
-    // run code from ram, faster as there are no waitstates
-    video_render_text_row(text_row, font_row);
 
     if (VIDEO_DEBUG_DURATION_TEXTLINE) led_off();
 }
@@ -159,7 +161,7 @@ void video_render_animation(uint16_t visible_line) {
     if (LOGO_WIDTH <= VIDEO_BUFFER_WIDTH) {
         logo_offset_x = 0;
     }else{
-        logo_offset_x = VIDEO_BUFFER_WIDTH/2 - LOGO_WIDTH/8/2;
+        logo_offset_x = 34 - LOGO_WIDTH/8/2;
     }
     uint32_t logo_offset;
     uint8_t *logo_ptr;

@@ -104,10 +104,9 @@ while(1){
             }
         }
 
-
-
         // make sure the last 4 bytes are always disabled
         // why four bytes? fifo ? todo: check this
+        // actually the most important part is that bit 0x0080 in len-2 is not set
         video_line.buffer[BLACK][page_to_fill][VIDEO_BUFFER_WIDTH/2-2] = 0;
         video_line.buffer[BLACK][page_to_fill][VIDEO_BUFFER_WIDTH/2-1] = 0;
         video_line.buffer[WHITE][page_to_fill][VIDEO_BUFFER_WIDTH/2-2] = 0;
@@ -121,6 +120,8 @@ while(1){
         // clear request
         video_line.fill_request = VIDEO_BUFFER_FILL_REQUEST_IDLE;
         //debug("ok\n");
+
+        process serial data here
     }
 
 };
