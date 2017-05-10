@@ -37,5 +37,8 @@ void debug_put_fixed2(uint16_t c);
 void debug_put_fixed1p3(uint16_t c);
 
 #define debug_function_call() { debug(__FILE__); debug(": "); debug((char*)__FUNCTION__); debug("()\n"); }
+#define debug_function_call_h32(val) { debug(__FILE__); debug(": "); debug((char*)__FUNCTION__); debug("(0x"); debug_put_hex32(val); debug("\n"); }
+#define debug_function_call_fixed1p3(val) { debug(__FILE__); debug(": "); debug((char*)__FUNCTION__); debug("(0x"); debug_put_fixed1p3(val); debug("\n"); }
+
 
 #endif  // DEBUG_H_

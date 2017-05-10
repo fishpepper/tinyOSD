@@ -110,7 +110,7 @@ LDLIBS		+= -Wl,--start-group -lc -lgcc -lnosys -Wl,--end-group
 .SECONDEXPANSION:
 .SECONDARY:
 
-all: stylecheck elf 
+all: elf 
 
 elf: $(BIN_DIR)/$(TARGET).elf
 bin: $(BIN_DIR)/$(TARGET).bin

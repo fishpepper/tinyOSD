@@ -20,10 +20,56 @@
 #ifndef VIDEO_H_
 #define VIDEO_H_
 
+#define VIDEO_DEBUG_DMA 0
+#define VIDEO_DEBUG_DURATION_TEXTLINE 1
+#define VIDEO_DEBUG_DURATION_ANIMATION 1
+
 #include <stdint.h>
+
 
 void video_init(void);
 
+
+#define VIDEO_BUFFER_WIDTH (2*38) //66 // max should be ~68
+#define VIDEO_CHAR_BUFFER_WIDTH  35  // THIS SHALL NEVER EXCEED VIDEO_BUFFER_WIDTH/2-3 !
+#define VIDEO_CHAR_BUFFER_HEIGHT 13
+
+#define VIDEO_BUFFER_FILL_REQUEST_IDLE 3
+
+#define WHITE 0
+#define BLACK 1
+
+//NTSC
+#define VIDEO_FIRST_ACTIVE_LINE 40
+#define VIDEO_LAST_ACTIVE_LINE  516
+#define VIDEO_CENTER_ACTIVE_LINE ((VIDEO_LAST_ACTIVE_LINE - VIDEO_FIRST_ACTIVE_LINE) / 2)
+
+extern uint8_t video_char_buffer[VIDEO_CHAR_BUFFER_HEIGHT][VIDEO_CHAR_BUFFER_WIDTH];
+
+#define VIDEO_CLEAR_BUFFER(__col, __idx) { memset((void *)&video_line.buffer[__col][__idx][0], 0, (VIDEO_BUFFER_WIDTH/2)*2); }
+
+
+typedef struct {
+    volatile uint16_t buffer[2][2][VIDEO_BUFFER_WIDTH/2];
+
+    // current line on screen
+    volatile uint32_t active_line;
+
+    // page currently beeing drawn
+    volatile uint32_t currently_rendering;
+
+    // pending fill requests?
+    volatile uint32_t fill_request;
+} video_line_t;
+
+extern video_line_t video_line;
+
+//extern volatile uint16_t video_buffer[2][2][VIDEO_BUFFER_WIDTH/2];
+//extern volatile uint32_t video_buffer_fill_request;
+extern volatile uint32_t video_unprocessed_frame_count;
+//extern volatile uint32_t video_line;
+extern volatile uint32_t video_field;
+//extern volatile uint32_t video_buffer_page;
 
 #define TIMER_CLOCKS_PER_US                      (48000000 / 1000000)
 #define _US_TO_CLOCKS(__us)                      ((uint32_t)((__us) * TIMER_CLOCKS_PER_US))
@@ -72,23 +118,6 @@ void video_init(void);
 //
 #define VIDEO_SYNC_LO_BROAD       (VIDEO_LINE_LEN / 2.0) - VIDEO_SYNC_HSYNC
 
-// using those macros is a big speedup (no lib calls!)
-#define DMA_SET_NUMBER_OF_DATA(_dma, _ch, _val) { DMA_CNDTR(_dma, _ch) = (_val); }
-#define DMA_SET_MEMORY_ADDRES_NOCHECK(_dma, _ch, _address) { DMA_CMAR(_dma, _ch) = (uint32_t) (_address); }
 
-//#define DMA_CLEAR_INTERRUPT_FLAGS(_dma, _ch, _flags) { DMA_IFCR(_dma) = ((_flags) << DMA_FLAG_OFFSET(_ch)); }
-#define DMA_CLEAR_INTERRUPT_FLAGS_MULTI(_dma, _flags) { DMA_IFCR(_dma) = (_flags); }
-
-#define DMA_DISABLE_CHANNEL(_dma, _ch) { DMA_CCR(_dma, _ch) &= ~DMA_CCR_EN; }
-#define DMA_ENABLE_CHANNEL(_dma, _ch) { DMA_CCR(_dma, _ch) |= DMA_CCR_EN; }
-#define TIMER_CLEAR_FLAG(_tim, _flags) { TIM_SR(_tim) = ~(_flags); }
-#define TIMER_DISABLE_IRQ(_tim, _irqs) { TIM_DIER(_tim) &= ~(_irqs); }
-#define TIMER_ENABLE_IRQ(_tim, _irqs) { TIM_DIER(_tim) |= (_irqs); }
-#define TIMER_GET_FLAG(_tim, _flag) (TIM_SR(_tim) & (_flag))
-#define TIMER_SET_DMA_ON_COMPARE_EVENT(_tim) {  TIM_CR2(_tim) &= ~TIM_CR2_CCDS; }
-#define TIMER_CLEAR_DMA_ON_COMPARE_EVENT(_tim) {  TIM_CR2(_tim) |= TIM_CR2_CCDS; }
-
-
-void video_put_uint16(uint8_t *buffer, uint16_t val);
 
 #endif  // VIDEO_H_

@@ -18,6 +18,139 @@
 */
 
 #include "video.h"
+#include "video_io.h"
+#include "video_render.h"
+#include "video_spi_dma.h"
+#include "video_timer.h"
+#include "led.h"
+
+#include <stdio.h>
+#include <string.h>
+
+static void video_put_uint16(uint8_t *buffer, uint16_t val);
+
+video_line_t video_line;
+//volatile uint16_t video_buffer[2][2][VIDEO_BUFFER_WIDTH/2];
+uint8_t video_char_buffer[VIDEO_CHAR_BUFFER_HEIGHT][VIDEO_CHAR_BUFFER_WIDTH];
+//volatile uint32_t video_buffer_fill_request;
+volatile uint32_t video_unprocessed_frame_count;
+//volatile uint32_t video_line;
+volatile uint32_t video_field;
+//volatile uint32_t video_buffer_page;
+
+
+void video_init(void) {
+    // initialize line buffer
+    video_line.currently_rendering = 0;
+    video_line.active_line = 0;
+    video_line.fill_request = VIDEO_BUFFER_FILL_REQUEST_IDLE;
+
+    // clear all buffers
+    VIDEO_CLEAR_BUFFER(BLACK, 0);
+    VIDEO_CLEAR_BUFFER(BLACK, 1);
+    VIDEO_CLEAR_BUFFER(WHITE, 0);
+    VIDEO_CLEAR_BUFFER(WHITE, 1);
+
+    video_io_init();
+    video_spi_dma_init();
+    video_timer_init();
+
+    // no pending fill request
+
+    led_off();
+
+
+    for (uint8_t y=0; y<VIDEO_CHAR_BUFFER_HEIGHT; y++) {
+        for (uint8_t x=0; x<VIDEO_CHAR_BUFFER_WIDTH; x++) {
+            video_char_buffer[y][x] = ' ';
+        }
+    }
+
+    for (uint8_t x=0; x<VIDEO_CHAR_BUFFER_WIDTH; x++) {
+        video_char_buffer[VIDEO_CHAR_BUFFER_HEIGHT-1][x] = '0' + x;
+    }
+
+
+
+    video_unprocessed_frame_count = 0;
+
+    //uint16_t l=0;
+    uint32_t page_to_fill;
+
+while(1){
+    // show some stats:
+    if (video_line.active_line == VIDEO_FIRST_ACTIVE_LINE-1){
+            //led_on();
+            video_put_uint16((uint8_t*)&video_char_buffer[1][0], video_unprocessed_frame_count);
+            //led_off();
+    }
+
+    if (video_line.fill_request != VIDEO_BUFFER_FILL_REQUEST_IDLE) {
+        page_to_fill = video_line.fill_request;
+
+
+        if ((video_line.active_line < VIDEO_FIRST_ACTIVE_LINE) || (video_line.active_line > VIDEO_LAST_ACTIVE_LINE)){
+            // no data line, set to unactive
+            VIDEO_CLEAR_BUFFER(BLACK, page_to_fill);
+            VIDEO_CLEAR_BUFFER(WHITE, page_to_fill);
+        }else{
+            //visible line number:
+            uint16_t visible_line = video_line.active_line - VIDEO_FIRST_ACTIVE_LINE;
+
+            if ((visible_line > VIDEO_START_LINE_ANIMATION) && (visible_line < VIDEO_END_LINE_ANIMATION)) {
+                video_render_animation(visible_line);
+            }else{
+                video_render_text(visible_line);
+            }
+        }
+
+
+
+        // make sure the last 4 bytes are always disabled
+        // why four bytes? fifo ? todo: check this
+        video_line.buffer[BLACK][page_to_fill][VIDEO_BUFFER_WIDTH/2-2] = 0;
+        video_line.buffer[BLACK][page_to_fill][VIDEO_BUFFER_WIDTH/2-1] = 0;
+        video_line.buffer[WHITE][page_to_fill][VIDEO_BUFFER_WIDTH/2-2] = 0;
+        video_line.buffer[WHITE][page_to_fill][VIDEO_BUFFER_WIDTH/2-1] = 0;
+
+        // if the frame was sent in between, increment unprocessed frame counter
+        if (video_line.fill_request != page_to_fill) {
+            video_unprocessed_frame_count++;
+        }
+
+        // clear request
+        video_line.fill_request = VIDEO_BUFFER_FILL_REQUEST_IDLE;
+        //debug("ok\n");
+    }
+
+};
+}
+
+
+// output an unsigned 16-bit number to uart
+static void video_put_uint16(uint8_t *buffer, uint16_t val) {
+    uint8_t tmp;
+    uint8_t l = 0;
+    uint32_t mul;
+    // loop unrolling is better(no int16 arithmetic)
+    for (mul = 10000; mul>0; mul = mul/10) {
+        l = 0;
+        tmp = '0';
+        while (val >= mul) {
+                val -= mul;
+                tmp++;
+                l = 1;
+        }
+        if ((l == 0) && (tmp == '0') && (mul!=1)) {
+                *buffer++ = '0';
+        } else {
+                *buffer++ = tmp;
+        }
+    }
+}
+
+#if 0
+
 #include "config.h"
 #include "macros.h"
 #include "debug.h"
@@ -30,15 +163,11 @@
 #include <libopencm3/stm32/rcc.h>
 #include <libopencm3/stm32/gpio.h>
 #include <libopencm3/stm32/comparator.h>
-#include <libopencm3/stm32/dac.h>
-#include <libopencm3/stm32/spi.h>
-#include <libopencm3/stm32/dma.h>
 #include <libopencm3/stm32/exti.h>
 #include <libopencm3/stm32/timer.h>
 #include <libopencm3/stm32/syscfg.h>
 
 #include <libopencm3/cm3/scb.h>
-#include <libopencm3/cm3/nvic.h>
 
 #include <libopencmsis/core_cm3.h>
 
@@ -117,9 +246,13 @@ static const uint32_t video_cos_table[90] = {
 0x16,0x14,0x11,0xf,0xd,0xb,0x9,0x6,
 0x4,0x2};
 
+void video_render_text(uint16_t visible_line) {
+    if (VIDEO_DEBUG_DURATION_TEXTLINE) led_on();
+    uint32_t line    = visible_line / 2; // even and odd lines get the same data
 
-//this will run from ram -> faster as there are no waitstates
-__attribute__( ( long_call, section(".data") ) ) test(uint8_t text_row, uint8_t font_row, uint32_t line) {
+    uint8_t text_row = (line / 18);
+    uint8_t font_row = line % 18;
+
     // fill empty
     /*uint32_t *p = &video_buffer[0][video_buffer_fill_request][0];
     uint32_t *q = &video_buffer[1][video_buffer_fill_request][0];
@@ -130,6 +263,10 @@ __attribute__( ( long_call, section(".data") ) ) test(uint8_t text_row, uint8_t 
     //memset(&video_buffer[0][video_buffer_fill_request][0], 0, VIDEO_BUFFER_WIDTH);
     //memset(&video_buffer[1][video_buffer_fill_request][0], 0, VIDEO_BUFFER_WIDTH);
 
+    if (text_row >= VIDEO_CHAR_BUFFER_HEIGHT){
+        // no data
+        return;
+    }
 
 //    for (uint8_t color = 0; color < 1; color++){
 
@@ -145,9 +282,6 @@ __attribute__( ( long_call, section(".data") ) ) test(uint8_t text_row, uint8_t 
         uint8_t tmp=0;
 
         uint8_t *font_ptr_row = (uint8_t*)&font_data[0][font_row][0];
-        uint16_t *font_ptr_row16 = (uint16_t*)&font_data[1][font_row][0];
-
-        uint16_t *b16 = &video_buffer[1][video_buffer_fill_request][0];
 
         for (uint32_t text_col = 0; text_col < VIDEO_CHAR_BUFFER_WIDTH; text_col++) {
             //use manual loop unrolling here, subtract char ptr and add etc
@@ -162,31 +296,14 @@ __attribute__( ( long_call, section(".data") ) ) test(uint8_t text_row, uint8_t 
                 *video_buffer_ptr[0]++ = *font_ptr++;
 
                 // get black font data:
-                //font_ptr += sizeof(font_data[0])-2; //(uint8_t*)&font_data[1][font_row][index*2];
+                font_ptr += sizeof(font_data[0])-2; //(uint8_t*)&font_data[1][font_row][index*2];
 
-                uint16_t *fp16 = font_ptr_row16 + index;
-                *b16++ = *fp16;
+                *video_buffer_ptr[1]++ = (*font_ptr++);
+                *video_buffer_ptr[1]++ = (*font_ptr++);
+
+                font_ptr -= 4;
         }
   //  }
-}
-
-void video_render_text(uint16_t visible_line) {
-    if (VIDEO_DEBUG_DURATION_TEXTLINE) led_on();
-    uint32_t line    = visible_line / 2; // even and odd lines get the same data
-
-    uint8_t text_row = (line / 18);
-    uint8_t font_row = line % 18;
-
-
-
-    if (text_row >= VIDEO_CHAR_BUFFER_HEIGHT){
-        // no data
-        return;
-    }
-
-    test(text_row, font_row, line);
-
-
 
     if (VIDEO_DEBUG_DURATION_TEXTLINE) led_off();
 }
@@ -467,7 +584,7 @@ while(1){
     //timer_enable_irq(TIM1, TIM_DIER_CC2DE | TIM_DIER_CC2IE);
 
 
-    /*video_dma_prepare(0);
+    video_dma_prepare(0);
 
     debug("waiting for dma irq\n");
     //video_dma_trigger();
@@ -494,12 +611,12 @@ while(1){
             // debug_put_newline();
             // video_dbg = 0;
         }
-    /*if (EXTI_EMR){
-            debug("EXIT: 0x");
-            debug_put_hex32(EXTI_EMR);
-            debug_put_newline();
-            EXTI_EMR = 0;
-    }*/
+    //if (EXTI_EMR){
+    //        debug("EXIT: 0x");
+     //       debug_put_hex32(EXTI_EMR);
+      //      debug_put_newline();
+       //     EXTI_EMR = 0;
+    //}
             //
 
 }
@@ -648,7 +765,7 @@ static void video_init_spi_dma(void) {
     nvic_enable_irq(NVIC_DMA1_CHANNEL4_5_IRQ);
 
 
-    /***********************************************************/
+    // ***********************************************************
 
     // start with clean init
     dma_channel_reset(VIDEO_DMA_WHITE, DMA_CHANNEL3);
@@ -707,7 +824,7 @@ static void video_init_spi_dma(void) {
     dma_enable_transfer_complete_interrupt(VIDEO_DMA_BLACK, DMA_CHANNEL5);
 
 
-    /***********************************************************/
+    // ***********************************************************
 
     // start with clean init
     dma_channel_reset(VIDEO_DMA_WHITE, DMA_CHANNEL2);
@@ -1069,3 +1186,4 @@ void video_put_uint16(uint8_t *buffer, uint16_t val) {
     }
 }
 
+#endif

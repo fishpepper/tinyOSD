@@ -710,3 +710,12 @@ src/composite_video.c
 src/video.c
 src/video.h
 src/logo.h
+src/video_timer.h
+src/video_io.c
+src/video_io.h
+src/video_render.c
+src/video_render.h
+src/video_spi_dma.c
+src/video_spi_dma.h
+src/video_timer.c
+src/video_timer.h
