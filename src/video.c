@@ -145,6 +145,9 @@ __attribute__( ( long_call, section(".data") ) ) test(uint8_t text_row, uint8_t 
         uint8_t tmp=0;
 
         uint8_t *font_ptr_row = (uint8_t*)&font_data[0][font_row][0];
+        uint16_t *font_ptr_row16 = (uint16_t*)&font_data[1][font_row][0];
+
+        uint16_t *b16 = &video_buffer[1][video_buffer_fill_request][0];
 
         for (uint32_t text_col = 0; text_col < VIDEO_CHAR_BUFFER_WIDTH; text_col++) {
             //use manual loop unrolling here, subtract char ptr and add etc
@@ -159,12 +162,10 @@ __attribute__( ( long_call, section(".data") ) ) test(uint8_t text_row, uint8_t 
                 *video_buffer_ptr[0]++ = *font_ptr++;
 
                 // get black font data:
-                font_ptr += sizeof(font_data[0])-2; //(uint8_t*)&font_data[1][font_row][index*2];
+                //font_ptr += sizeof(font_data[0])-2; //(uint8_t*)&font_data[1][font_row][index*2];
 
-                *video_buffer_ptr[1]++ = (*font_ptr++);
-                *video_buffer_ptr[1]++ = (*font_ptr++);
-
-                font_ptr -= 4;
+                uint16_t *fp16 = font_ptr_row16 + index;
+                *b16++ = *fp16;
         }
   //  }
 }
