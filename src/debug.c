@@ -52,7 +52,7 @@ void debug_init_rcc(void) {
 void debug_init_gpio(void) {
     // set uart tx pin as output
     gpio_mode_setup(DEBUG_GPIO, GPIO_MODE_AF, GPIO_PUPD_NONE, DEBUG_TX_PIN);
-    gpio_set_output_options(DEBUG_GPIO, GPIO_OTYPE_PP, GPIO_OSPEED_2MHZ, DEBUG_TX_PIN);
+    gpio_set_output_options(DEBUG_GPIO, GPIO_OTYPE_PP, GPIO_OSPEED_50MHZ, DEBUG_TX_PIN);
 
     // setup USART TX pin as alternate function
     gpio_set_af(DEBUG_GPIO, DEBUG_GPIO_AF, DEBUG_TX_PIN);
@@ -60,7 +60,7 @@ void debug_init_gpio(void) {
 
 void debug_init_uart(void) {
     // setup USART parameters
-    usart_set_baudrate(DEBUG_UART, 115200);
+    usart_set_baudrate(DEBUG_UART, DEBUG_UART_BAUDRATE);
     usart_set_databits(DEBUG_UART, 8);
     usart_set_parity(DEBUG_UART, USART_PARITY_NONE);
     usart_set_stopbits(DEBUG_UART, USART_CR2_STOP_1_0BIT);

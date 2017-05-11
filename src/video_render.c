@@ -150,6 +150,7 @@ RUN_FROM_RAM static void video_render_text_row(uint8_t text_row, uint8_t font_ro
 static uint32_t video_render_ani_count;
 //static uint32_t video_render_ani_dir;
 
+// this renders in ~23.2us (~64us available)
 void video_render_animation(uint16_t visible_line) {
     if (VIDEO_DEBUG_DURATION_ANIMATION) led_on();
 
@@ -157,15 +158,8 @@ void video_render_animation(uint16_t visible_line) {
     uint32_t logo_start_line = VIDEO_CENTER_ACTIVE_LINE - LOGO_HEIGHT/2;
     uint32_t logo_end_line   = VIDEO_CENTER_ACTIVE_LINE + LOGO_HEIGHT/2;
 
-    uint32_t logo_offset_x;
-    if (LOGO_WIDTH <= VIDEO_BUFFER_WIDTH) {
-        logo_offset_x = 0;
-    }else{
-        logo_offset_x = 34 - LOGO_WIDTH/8/2;
-    }
     uint32_t logo_offset;
     uint16_t *logo_ptr;
-    //uint8_t *framebuffer_ptr;
     uint16_t *video_buffer_ptr;
     uint16_t *video_buffer_end_ptr;
     uint8_t ani_dir;
@@ -177,7 +171,6 @@ void video_render_animation(uint16_t visible_line) {
             video_render_ani_count -= 360;
         }
     }
-    //ani_count = 170;
 
     uint32_t scale;
     if (video_render_ani_count < 90) {
@@ -194,15 +187,12 @@ void video_render_animation(uint16_t visible_line) {
         ani_dir = 0;
     }
 
-    // we have a new request, osd is rendering the other page now,
-    // time to prepare the next page!
-    //debug("filling page "); debug_put_uint8(video_buffer_fill_request); debug_put_newline();
-
     // calculate line number:
     uint32_t line    = visible_line + 2;
 
     logo_start_line = VIDEO_CENTER_ACTIVE_LINE - (scale * LOGO_HEIGHT/2) / 128;
     logo_end_line   = VIDEO_CENTER_ACTIVE_LINE + (scale * LOGO_HEIGHT/2) / 128;
+
     logo_offset = (line - logo_start_line) * 128 / scale * (LOGO_WIDTH/8);
 
     if (!ani_dir) {
@@ -210,44 +200,23 @@ void video_render_animation(uint16_t visible_line) {
         logo_offset = LOGO_HEIGHT*LOGO_WIDTH/8 - logo_offset;
     }
 
-    uint32_t max_len = min((LOGO_WIDTH/8), (VIDEO_BUFFER_WIDTH - logo_offset_x));
-
     // fill the next line of data now:
-    for(uint8_t color = 0; color < 2; color++){
+    if ((line > logo_start_line) && (line < logo_end_line)){
+        // black and white:
+        for(uint8_t color = 0; color < 2; color++){
+            video_buffer_ptr = (uint16_t*) &video_line.buffer[color][video_line.fill_request][0];
 
-        //for(uint8_t i=0; i<VIDEO_BUFFER_WIDTH/2; i++){
-//                video_buffer[col][video_buffer_fill_request][i] = 0x0000;
-//            }
+            logo_ptr         = &logo_data16[color][logo_offset/2];
 
-        // [0] = white, [1] = black data
-        // fetch correct buffer ptr
-        video_buffer_ptr     = (uint16_t*) &video_line.buffer[color][video_line.fill_request][0];
-
-        video_buffer_end_ptr = video_buffer_ptr + VIDEO_BUFFER_WIDTH/2 - 4/2; //(uint8_t*) &video_buffer[col][video_buffer_fill_request][VIDEO_BUFFER_WIDTH/2-2];
-
-        logo_ptr = &logo_data16[color][logo_offset/2];
-
-
-        if ((line > logo_start_line) && (line < logo_end_line)){
-            uint16_t c=0;
-            while(c++ < logo_offset_x/2) {
-                *video_buffer_ptr++ = 0x0000;
-            }
-
-            c = 0;
-            while(c++ < max_len/2) {
+            uint16_t halfwords_todo = LOGO_WIDTH/8/2;
+            while (halfwords_todo--) {
                 *video_buffer_ptr++ = *logo_ptr++;
             }
-
-            //TESTME memset(video_buffer_ptr, 0xAA, video_buffer_end_ptr - video_buffer_ptr - 1);
-            while(video_buffer_ptr < video_buffer_end_ptr){
-                *video_buffer_ptr++ = 0x0;
-            }
-
-        }else{
-            // no image data region
-            VIDEO_CLEAR_BUFFER(color, video_line.fill_request);
         }
+    }else{
+        // no image data region
+        VIDEO_CLEAR_BUFFER(BLACK, video_line.fill_request);
+        VIDEO_CLEAR_BUFFER(WHITE, video_line.fill_request);
     }
     if (VIDEO_DEBUG_DURATION_ANIMATION) led_off();
 }
