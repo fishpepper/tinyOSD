@@ -22,13 +22,13 @@
 
 #define VIDEO_DEBUG_DMA 0
 #define VIDEO_DEBUG_DURATION_TEXTLINE 0
-#define VIDEO_DEBUG_DURATION_ANIMATION 1
+#define VIDEO_DEBUG_DURATION_ANIMATION 0
 
 #include <stdint.h>
 
 
 void video_init(void);
-
+void video_main_loop(void);
 
 #define VIDEO_BUFFER_WIDTH (2*38) //66 // max should be ~68
 #define VIDEO_CHAR_BUFFER_WIDTH  35  // THIS SHALL NEVER EXCEED VIDEO_BUFFER_WIDTH/2-3 !
@@ -45,6 +45,7 @@ void video_init(void);
 #define VIDEO_CENTER_ACTIVE_LINE ((VIDEO_LAST_ACTIVE_LINE - VIDEO_FIRST_ACTIVE_LINE) / 2)
 
 extern uint8_t video_char_buffer[VIDEO_CHAR_BUFFER_HEIGHT][VIDEO_CHAR_BUFFER_WIDTH];
+extern uint16_t video_char_buffer_write_ptr;
 
 #define VIDEO_CLEAR_BUFFER(__col, __idx) { memset((void *)&video_line.buffer[__col][__idx][0], 0, (VIDEO_BUFFER_WIDTH/2)*2); }
 #define VIDEO_SET_BUFFER(__col, __idx) { memset((void *)&video_line.buffer[__col][__idx][0], 0xFFFF, (VIDEO_BUFFER_WIDTH/2)*2); }
@@ -68,6 +69,7 @@ extern video_line_t video_line;
 //extern volatile uint16_t video_buffer[2][2][VIDEO_BUFFER_WIDTH/2];
 //extern volatile uint32_t video_buffer_fill_request;
 extern volatile uint32_t video_unprocessed_frame_count;
+extern volatile uint32_t video_uart_overrun;
 //extern volatile uint32_t video_line;
 extern volatile uint32_t video_field;
 //extern volatile uint32_t video_buffer_page;

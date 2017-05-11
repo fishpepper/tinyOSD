@@ -24,6 +24,7 @@
 #include "clocksource.h"
 #include "debug.h"
 #include "video.h"
+#include "serial.h"
 
 #include <stdlib.h>
 #include <libopencm3/cm3/nvic.h>
@@ -40,12 +41,12 @@ int main(void) {
     led_init();
 
     debug_init();
+
     video_init();
 
-    while (1) {
-        debug("main: tick\n");
-        delay_ms(1000);
-        //led_toggle();
-    }
+    serial_init();
+
+    // this will never exit...
+    video_main_loop();
 }
 

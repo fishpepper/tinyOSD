@@ -719,3 +719,5 @@ src/video_spi_dma.c
 src/video_spi_dma.h
 src/video_timer.c
 src/video_timer.h
+src/serial.h
+src/serial.c

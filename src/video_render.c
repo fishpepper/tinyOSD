@@ -91,12 +91,11 @@ RUN_FROM_RAM static void video_render_text_row(uint8_t text_row, uint8_t font_ro
 
 
     uint8_t *char_ptr = &video_char_buffer[text_row][0];
-    uint8_t tmp=0;
 
     uint8_t *font_ptr_row = (uint8_t*)&font_data[0][font_row][0];
     uint16_t *font_ptr_row16 = (uint16_t*)&font_data[1][font_row][0];
 
-    uint16_t *b16 = &video_line.buffer[BLACK][page_to_fill][0];
+    uint16_t *b16 = (uint16_t*)&video_line.buffer[BLACK][page_to_fill][0];
 
     for (uint32_t text_col = 0; text_col < VIDEO_CHAR_BUFFER_WIDTH; text_col++) {
         //use manual loop unrolling here, subtract char ptr and add etc
@@ -161,7 +160,6 @@ void video_render_animation(uint16_t visible_line) {
     uint32_t logo_offset;
     uint16_t *logo_ptr;
     uint16_t *video_buffer_ptr;
-    uint16_t *video_buffer_end_ptr;
     uint8_t ani_dir;
 
 
@@ -204,9 +202,9 @@ void video_render_animation(uint16_t visible_line) {
     if ((line > logo_start_line) && (line < logo_end_line)){
         // black and white:
         for(uint8_t color = 0; color < 2; color++){
+            // fetch source and dest ptr
             video_buffer_ptr = (uint16_t*) &video_line.buffer[color][video_line.fill_request][0];
-
-            logo_ptr         = &logo_data16[color][logo_offset/2];
+            logo_ptr         = (uint16_t*)&logo_data16[color][logo_offset/2];
 
             uint16_t halfwords_todo = LOGO_WIDTH/8/2;
             while (halfwords_todo--) {

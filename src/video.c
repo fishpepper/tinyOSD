@@ -22,24 +22,31 @@
 #include "video_render.h"
 #include "video_spi_dma.h"
 #include "video_timer.h"
+#include "debug.h"
 #include "led.h"
+#include "serial.h"
 
 #include <stdio.h>
 #include <string.h>
 
 static void video_put_uint16(uint8_t *buffer, uint16_t val);
+static void video_render_blank(uint16_t line);
+uint16_t video_char_buffer_write_ptr;
 
 video_line_t video_line;
 //volatile uint16_t video_buffer[2][2][VIDEO_BUFFER_WIDTH/2];
 uint8_t video_char_buffer[VIDEO_CHAR_BUFFER_HEIGHT][VIDEO_CHAR_BUFFER_WIDTH];
 //volatile uint32_t video_buffer_fill_request;
 volatile uint32_t video_unprocessed_frame_count;
+ volatile uint32_t video_uart_overrun;
 //volatile uint32_t video_line;
 volatile uint32_t video_field;
-//volatile uint32_t video_buffer_page;
+volatile uint32_t video_buffer_page;
 
 
 void video_init(void) {
+    debug_function_call();
+
     // initialize line buffer
     video_line.currently_rendering = 0;
     video_line.active_line = 0;
@@ -55,8 +62,6 @@ void video_init(void) {
     video_spi_dma_init();
     video_timer_init();
 
-    // no pending fill request
-
     led_off();
 
 
@@ -70,61 +75,81 @@ void video_init(void) {
         video_char_buffer[VIDEO_CHAR_BUFFER_HEIGHT-1][x] = '0' + x;
     }
 
-
-
     video_unprocessed_frame_count = 0;
+}
 
-    //uint16_t l=0;
+void video_render_blank(uint16_t line) {
+    // no data line, set to inactive
+    VIDEO_CLEAR_BUFFER(BLACK, video_line.fill_request);
+    VIDEO_CLEAR_BUFFER(WHITE, video_line.fill_request);
+
+    // we have soem time left, use it:
+    switch (line) {
+        default:
+            //nothing to do
+            break;
+
+        case(VIDEO_FIRST_ACTIVE_LINE-1):
+            // show some statistics
+            // update missing frames
+            video_put_uint16((uint8_t*)&video_char_buffer[1][0], video_unprocessed_frame_count);
+            break;
+
+        case(VIDEO_FIRST_ACTIVE_LINE-2):
+            //uart overrun counter
+            video_put_uint16((uint8_t*)&video_char_buffer[1][10], video_uart_overrun);
+            break;
+
+    }
+
+}
+
+void video_main_loop(void) {
     uint32_t page_to_fill;
 
-while(1){
-    // show some stats:
-    if (video_line.active_line == VIDEO_FIRST_ACTIVE_LINE-1){
-            //led_on();
-            video_put_uint16((uint8_t*)&video_char_buffer[1][0], video_unprocessed_frame_count);
-            //led_off();
-    }
+    // endless loop
+    while (1) {
+        // store current page to render
 
-    if (video_line.fill_request != VIDEO_BUFFER_FILL_REQUEST_IDLE) {
-        page_to_fill = video_line.fill_request;
+        // is there a new line request?
+        if (video_line.fill_request != VIDEO_BUFFER_FILL_REQUEST_IDLE) {
+            page_to_fill = video_line.fill_request;
 
-
-        if ((video_line.active_line < VIDEO_FIRST_ACTIVE_LINE) || (video_line.active_line > VIDEO_LAST_ACTIVE_LINE)){
-            // no data line, set to unactive
-            VIDEO_CLEAR_BUFFER(BLACK, page_to_fill);
-            VIDEO_CLEAR_BUFFER(WHITE, page_to_fill);
-        }else{
-            //visible line number:
-            uint16_t visible_line = video_line.active_line - VIDEO_FIRST_ACTIVE_LINE;
-
-            if ((visible_line > VIDEO_START_LINE_ANIMATION) && (visible_line < VIDEO_END_LINE_ANIMATION)) {
-                video_render_animation(visible_line);
+            // active or blank line?
+            if ((video_line.active_line < VIDEO_FIRST_ACTIVE_LINE) || (video_line.active_line > VIDEO_LAST_ACTIVE_LINE)){
+                // inactive lines, render lank line and do some processing
+                video_render_blank(video_line.active_line);
             }else{
-                video_render_text(visible_line);
+                //visible line -> render data
+                uint16_t visible_line = video_line.active_line - VIDEO_FIRST_ACTIVE_LINE;
+
+                if ((visible_line > VIDEO_START_LINE_ANIMATION) && (visible_line < VIDEO_END_LINE_ANIMATION)) {
+                    video_render_animation(visible_line);
+                }else{
+                    video_render_text(visible_line);
+                }
             }
+
+            // make sure the last 4 bytes are always disabled
+            // why four bytes? fifo ? todo: check this
+            video_line.buffer[BLACK][page_to_fill][VIDEO_BUFFER_WIDTH/2-2] = 0;
+            video_line.buffer[BLACK][page_to_fill][VIDEO_BUFFER_WIDTH/2-1] = 0;
+            video_line.buffer[WHITE][page_to_fill][VIDEO_BUFFER_WIDTH/2-2] = 0;
+            video_line.buffer[WHITE][page_to_fill][VIDEO_BUFFER_WIDTH/2-1] = 0;
+
+
+            // if the frame was sent in between, increment unprocessed frame counter
+            if (video_line.fill_request != page_to_fill) {
+                video_unprocessed_frame_count++;
+            }
+
+            // clear request
+            video_line.fill_request = VIDEO_BUFFER_FILL_REQUEST_IDLE;
+
         }
-
-        // make sure the last 4 bytes are always disabled
-        // why four bytes? fifo ? todo: check this
-        // actually the most important part is that bit 0x0080 in len-2 is not set
-        video_line.buffer[BLACK][page_to_fill][VIDEO_BUFFER_WIDTH/2-2] = 0;
-        video_line.buffer[BLACK][page_to_fill][VIDEO_BUFFER_WIDTH/2-1] = 0;
-        video_line.buffer[WHITE][page_to_fill][VIDEO_BUFFER_WIDTH/2-2] = 0;
-        video_line.buffer[WHITE][page_to_fill][VIDEO_BUFFER_WIDTH/2-1] = 0;
-
-        // if the frame was sent in between, increment unprocessed frame counter
-        if (video_line.fill_request != page_to_fill) {
-            video_unprocessed_frame_count++;
-        }
-
-        // clear request
-        video_line.fill_request = VIDEO_BUFFER_FILL_REQUEST_IDLE;
-        //debug("ok\n");
-
-
+        // process incoming data
+        serial_process();
     }
-
-};
 }
 
 
