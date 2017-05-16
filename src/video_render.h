@@ -23,12 +23,13 @@
 #include <stdint.h>
 #include "logo.h"
 
-#define VIDEO_START_LINE_ANIMATION (VIDEO_CENTER_ACTIVE_LINE - LOGO_HEIGHT/2)
-#define VIDEO_END_LINE_ANIMATION (VIDEO_CENTER_ACTIVE_LINE + LOGO_HEIGHT/2)
+
 
 void video_render_init(void);
 void video_render_animation(uint16_t visible_line);
 void video_render_text(uint16_t visible_line);
+void video_render_sticks(uint16_t visible_line);
+void video_render_overlay_sticks(uint16_t visible_line);
 
 
 

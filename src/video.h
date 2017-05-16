@@ -25,7 +25,15 @@
 #define VIDEO_DEBUG_DURATION_ANIMATION 0
 
 #include <stdint.h>
+#define VIDEO_START_LINE_ANIMATION (VIDEO_CENTER_ACTIVE_LINE - LOGO_HEIGHT/2)
+#define VIDEO_END_LINE_ANIMATION (VIDEO_CENTER_ACTIVE_LINE + LOGO_HEIGHT/2)
 
+#define VIDEO_RENDER_STICK_SIZE       96
+#define VIDEO_RENDER_STICK_SIZE_X     96
+#define VIDEO_RENDER_STICK_SIZE_Y    128
+#define VIDEO_RENDER_STICK_POS_X   (3*8)
+#define VIDEO_START_LINE_STICKS   (8*35)
+#define VIDEO_END_LINE_STICKS  (VIDEO_START_LINE_STICKS + VIDEO_RENDER_STICK_SIZE)
 
 void video_init(void);
 void video_main_loop(void);
@@ -50,6 +58,7 @@ extern uint16_t video_char_buffer_write_ptr;
 #define VIDEO_CLEAR_BUFFER(__col, __idx) { memset((void *)&video_line.buffer[__col][__idx][0], 0, (VIDEO_BUFFER_WIDTH/2)*2); }
 #define VIDEO_SET_BUFFER(__col, __idx) { memset((void *)&video_line.buffer[__col][__idx][0], 0xFFFF, (VIDEO_BUFFER_WIDTH/2)*2); }
 
+extern volatile uint8_t video_stick_data[4];
 
 typedef struct {
     volatile uint16_t buffer[2][2][VIDEO_BUFFER_WIDTH/2];
@@ -70,6 +79,7 @@ extern video_line_t video_line;
 //extern volatile uint32_t video_buffer_fill_request;
 extern volatile uint32_t video_unprocessed_frame_count;
 extern volatile uint32_t video_uart_overrun;
+extern volatile uint32_t video_uart_checksum_err;
 //extern volatile uint32_t video_line;
 extern volatile uint32_t video_field;
 //extern volatile uint32_t video_buffer_page;

@@ -25,6 +25,14 @@
 #define RUN_FROM_RAM __attribute__ ((long_call, section (".data")))
 
 
+/*#define CRC_SET_INIT(__crc) { \
+    CRC_INIT = (__crc); \
+    CRC_CR = 0; \
+    CRC_CR |= CRC_CR_RESET; \
+
+}
+#define CRC_UPDATE(__crc, __val) { CRC_DR = __val; __crc = CRC_DR;}*/
+
 // ***************************************************
 // using those macros is a big speedup (no lib calls!)
 // ***************************************************

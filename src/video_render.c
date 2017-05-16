@@ -50,6 +50,201 @@ static const uint32_t video_cos_table[90] = {
 
 
 void video_render_init(void) {
+    video_stick_data[0] = VIDEO_RENDER_STICK_SIZE_X;    // A
+    video_stick_data[1] = VIDEO_RENDER_STICK_SIZE_Y/2;  // E
+    video_stick_data[2] = VIDEO_RENDER_STICK_SIZE_Y/2;  // T
+    video_stick_data[3] = VIDEO_RENDER_STICK_SIZE_X;    // R
+}
+
+void video_render_overlay_sticks(uint16_t visible_line) {
+    uint16_t py = visible_line - VIDEO_START_LINE_STICKS;
+
+    // check if this is inside the stick ui region
+    if (py > VIDEO_RENDER_STICK_SIZE_Y){
+        // outside, abort
+        return;
+    }
+
+    uint16_t page_to_render = video_line.fill_request;
+
+    if ((py == 0) || (py == VIDEO_RENDER_STICK_SIZE_Y)) {
+        // render top and bottom of stick rect
+        uint8_t *buf_w = (uint8_t *)&video_line.buffer[WHITE][page_to_render][VIDEO_RENDER_STICK_POS_X/8/2];
+        //uint8_t *buf_b = (uint8_t *)&video_line.buffer[BLACK][page_to_render][VIDEO_RENDER_STICK_POS_X/8/2];
+
+        // white is shiftet 1 byte
+        // plus shift for non 16bit aligned start positions:
+        buf_w += 1 +  ((VIDEO_RENDER_STICK_POS_X/8) & 1);
+
+        for (uint8_t i=VIDEO_RENDER_STICK_POS_X/8; i<((VIDEO_RENDER_STICK_POS_X + VIDEO_RENDER_STICK_SIZE_X)/8); i++){
+            *buf_w++ = 0xFF;
+            //*buf_b++ = 0xFF;
+        }
+
+    } else if (py == video_stick_data[2]) {
+            // y value matches, render point at valid x pos
+            uint8_t *buf_w = (uint8_t *)&video_line.buffer[WHITE][page_to_render][0];
+            // add valid point
+            uint8_t xr = VIDEO_RENDER_STICK_POS_X/8 + video_stick_data[3]/8;
+            uint8_t xm = video_stick_data[3] & 0x07;  // = %8
+            uint32_t v32w = 0b110110000000000000 >> xm;
+            //uint32_t v32b = 0b001000000000000000 >> xm;
+            buf_w = (uint8_t *)&video_line.buffer[WHITE][page_to_render][0];
+            buf_w += xr + 1 - 1;
+
+            *buf_w++ |= (v32w >> 16) & 0xFF;
+            *buf_w++ |= (v32w >> 8) & 0xFF;
+            *buf_w++ |= v32w & 0xFF;
+
+    } else if ((py == video_stick_data[2]-1) || (py == video_stick_data[2]+1)){
+            // y +/- 1 matches, render point at valid x pos
+            uint8_t xr = VIDEO_RENDER_STICK_POS_X/8 + video_stick_data[3]/8;
+            uint8_t xm = video_stick_data[3] & 0x07;  // = %8
+            uint32_t v32w = 0b00000011100000000000000 >> xm;
+
+            uint8_t *buf_w = (uint8_t *)&video_line.buffer[WHITE][page_to_render][0];
+            buf_w += xr + 1 - 1;
+
+            *buf_w++ |= (v32w >> 16) & 0xFF;
+            *buf_w++ |= (v32w >> 8) & 0xFF;
+            *buf_w++ |= v32w & 0xFF;
+    }
+
+    // add border
+    uint8_t *buf_w = (uint8_t *)&video_line.buffer[WHITE][page_to_render][VIDEO_RENDER_STICK_POS_X/8/2];
+    //uint8_t *buf_b = (uint8_t *)&video_line.buffer[BLACK][page_to_render][VIDEO_RENDER_STICK_POS_X/8/2];
+
+    // white is shiftet 1 byte
+    // plus shift for non 16bit aligned start positions:
+    buf_w += 1 +  ((VIDEO_RENDER_STICK_POS_X/8) & 1);
+
+    // render border
+    *buf_w = (*buf_w) | 0x80;
+    //*buf_b = (*buf_b) | 0x80;
+
+    buf_w += VIDEO_RENDER_STICK_SIZE_X/8 - 1;
+    //buf_b += VIDEO_RENDER_STICK_SIZE_X/8 - 1;
+
+    *buf_w = (*buf_w) | 0x01;
+    //*buf_b = (*buf_b) | 0x01;
+
+/*
+    // overlay stick position
+    py = py - (uint16_t)video_stick_buffer_offset;
+    if (py < 8) {
+        // overlay stick pos
+        uint8_t *buf_w = (uint8_t *)&video_line.buffer[WHITE][page_to_render][VIDEO_RENDER_STICK_POS_X/8/2];
+        uint8_t *buf_b = (uint8_t *)&video_line.buffer[BLACK][page_to_render][VIDEO_RENDER_STICK_POS_X/8/2];
+
+        // white is shiftet 1 byte
+        buf_w++;
+
+        uint8_t *stick_buf_w = (uint8_t *)&video_stick_buffer[WHITE][py][0];
+        uint8_t *stick_buf_b = (uint8_t *)&video_stick_buffer[BLACK][py][0];
+
+        for(uint8_t x=0; x<VIDEO_RENDER_STICK_SIZE_X/8; x++){
+            *buf_w++ |= *stick_buf_w++;
+            *buf_b++ |= *stick_buf_b++;
+        }
+    }
+    */
+}
+
+void video_render_sticks(uint16_t visible_line) {
+    uint16_t page_to_render = video_line.fill_request;
+
+    uint16_t py = visible_line - VIDEO_START_LINE_STICKS;
+    // start with empty buffer
+    VIDEO_CLEAR_BUFFER(BLACK, page_to_render);
+    VIDEO_CLEAR_BUFFER(WHITE, page_to_render);
+
+    if (py > VIDEO_RENDER_STICK_SIZE){
+        // outside active region, send empty line
+        return;
+    }
+
+    // render left stick
+    if ((py == 0) || (py == VIDEO_RENDER_STICK_SIZE-1)) {
+        // render top and bottom of stick rect
+        uint8_t *buf_w = (uint8_t *)&video_line.buffer[WHITE][page_to_render][0];
+        uint8_t *buf_b = (uint8_t *)&video_line.buffer[BLACK][page_to_render][0];
+
+        // white is shiftet 1 byte
+        buf_w += VIDEO_RENDER_STICK_POS_X/8 + 1;
+        buf_b += VIDEO_RENDER_STICK_POS_X/8;
+
+        for (uint8_t i=VIDEO_RENDER_STICK_POS_X/8; i<((VIDEO_RENDER_STICK_POS_X + VIDEO_RENDER_STICK_SIZE)/8); i++){
+            *buf_w++ = 0xFF;
+            *buf_b++ = 0xFF;
+        }
+    } else if ((py == video_stick_data[2]-1) || (py == video_stick_data[2]+1)){
+        // y +/- 1 matches, render point at valid x pos
+        uint8_t xr = VIDEO_RENDER_STICK_POS_X/8 + video_stick_data[3]/8;
+        uint8_t xm = video_stick_data[3] & 0x07;  // = %8
+        uint32_t v32w = 0b00000011100000000000000 >> xm;
+
+        uint8_t *buf_w = (uint8_t *)&video_line.buffer[WHITE][page_to_render][0];
+        buf_w += xr + 1 - 1;
+
+        *buf_w++ = (v32w >> 16) & 0xFF;
+        *buf_w++ = (v32w >> 8) & 0xFF;
+        *buf_w++ = v32w & 0xFF;
+
+        // add border
+        buf_w = (uint8_t *)&video_line.buffer[WHITE][page_to_render][0];
+        buf_w += VIDEO_RENDER_STICK_POS_X/8 + 1;
+        *buf_w = (*buf_w) | 0x80;
+        buf_w += VIDEO_RENDER_STICK_SIZE/8 - 1;
+        *buf_w = (*buf_w) | 0x01;
+    //b[1][STICK_POS_X/8] |= 0x80
+    //b[1][STICK_POS_X/8+STICK_SIZE/8-1] |= 0x01
+
+    } else if (py == video_stick_data[2]) {
+        // y value matches, render point at valid x pos
+        uint8_t *buf_w = (uint8_t *)&video_line.buffer[WHITE][page_to_render][0];
+        buf_w += VIDEO_RENDER_STICK_POS_X/8 + 1;
+        *buf_w = (*buf_w) | 0x80;
+        buf_w += VIDEO_RENDER_STICK_SIZE/8 - 1;
+        *buf_w = (*buf_w) | 0x01;
+        //b[0][STICK_POS_X/8+STICK_SIZE/8-1] = 0x01
+        //b[1][STICK_POS_X/8+STICK_SIZE/8-1] = 0x01
+
+        // add valid point
+        uint8_t xr = VIDEO_RENDER_STICK_POS_X/8 + video_stick_data[3]/8;
+        uint8_t xm = video_stick_data[3] & 0x07;  // = %8
+        uint32_t v32w = 0b110110000000000000 >> xm;
+        //uint32_t v32b = 0b001000000000000000 >> xm;
+        buf_w = (uint8_t *)&video_line.buffer[WHITE][page_to_render][0];
+        buf_w += xr + 1 - 1;
+
+        *buf_w++ = (v32w >> 16) & 0xFF;
+        *buf_w++ = (v32w >> 8) & 0xFF;
+        *buf_w++ = v32w & 0xFF;
+
+  /*
+       # [00000000][00000011][11000000]
+       val8 = val32 & 0xFF
+       b[0][xr+1] |=  val8
+       #b[1][xr+1] &= ~val8
+       val8 = (val32 >> 8) & 0xFF
+       b[0][xr+0] |=  val8
+       b[1][xr+0] |=  (val32b >> 8)&0xFF
+       #b[1][xr+0] &= ~val8
+       val8 = (val32 >> 16) & 0xFF
+       b[0][xr-1] |=  val8
+       #b[1][xr-1] &= ~val8
+*/
+
+    } else {
+        // render border only
+        // y value matches, render point at valid x pos
+        uint8_t *buf_w = (uint8_t *)&video_line.buffer[WHITE][page_to_render][0];
+        buf_w += VIDEO_RENDER_STICK_POS_X/8 + 1;
+        *buf_w = (*buf_w) | 0x80;
+        buf_w += VIDEO_RENDER_STICK_SIZE/8 - 1;
+        *buf_w = (*buf_w) | 0x01;
+    }
+
 }
 
 

@@ -23,6 +23,7 @@
 #include "config.h"
 #include "video.h"
 #include "led.h"
+#include "crc8.h"
 
 #include <stdint.h>
 #include <libopencm3/stm32/rcc.h>
@@ -37,13 +38,14 @@ static void serial_init_uart(void);
 enum serial_protocol_state_t {
     SERIAL_PROTOCOL_STATE_IDLE = 0,
     SERIAL_PROTOCOL_STATE_LEN,
-    SERIAL_PROTOCOL_STATE_ADDRESS,
+    SERIAL_PROTOCOL_STATE_COMMAND,
     SERIAL_PROTOCOL_STATE_DATA,
     SERIAL_PROTOCOL_STATE_CHECKSUM,
 } serial_protocol_state;
 
 #define SERIAL_PROTOCOL_HEADER 0x80
 
+#define SERIAL_PROTOCOL_FRAME_BUFFER_SIZE 64
 
 void serial_init(void) {
     debug_function_call();
@@ -57,6 +59,9 @@ void serial_init(void) {
 
 void serial_init_rcc(void) {
     debug_function_call();
+
+    // crc module clock enable
+    rcc_periph_clock_enable(RCC_CRC);
 
     // peripheral clocks enable
     rcc_periph_clock_enable(GPIO_RCC(SERIAL_GPIO));
@@ -98,11 +103,12 @@ void serial_init_uart(void) {
     usart_enable(SERIAL_UART);
 }
 
-static volatile uint8_t serial_protocol_frame_crc;
-static volatile uint8_t serial_protocol_frame_len;
-static volatile uint8_t serial_protocol_frame_address;
-static volatile uint8_t serial_protocol_frame_data_count;
-static volatile uint8_t serial_protocol_frame_data[256];
+static volatile uint8_t  serial_protocol_frame_crc;
+static volatile uint8_t  serial_protocol_frame_len;
+static volatile uint8_t  serial_protocol_frame_command;
+static volatile uint8_t  serial_protocol_frame_data_todo;
+static volatile uint8_t  serial_protocol_frame_data[SERIAL_PROTOCOL_FRAME_BUFFER_SIZE];
+static volatile uint8_t *serial_protocol_frame_data_ptr;
 
 // process serial datastream
 // this uses a very simple protocol:
@@ -131,7 +137,7 @@ void serial_process(void) {
     uint8_t rx = USART_RDR(SERIAL_UART);
 
     // update crc
-    serial_protocol_frame_crc ^= rx;
+    CRC8_UPDATE(serial_protocol_frame_crc, rx);
 
     switch (serial_protocol_state) {
         default:
@@ -139,31 +145,58 @@ void serial_process(void) {
             // look for SOF
             if (rx == SERIAL_PROTOCOL_HEADER) {
                 // new frame
-                serial_protocol_state = SERIAL_PROTOCOL_STATE_LEN;
-                serial_protocol_frame_crc = rx;
+                 serial_protocol_state = SERIAL_PROTOCOL_STATE_LEN;
+                 CRC8_INIT(serial_protocol_frame_crc, 0);
+                 CRC8_UPDATE(serial_protocol_frame_crc, rx);
             }
             break;
 
         case(SERIAL_PROTOCOL_STATE_LEN):
             // fetch len
             serial_protocol_frame_len = rx;
-            serial_protocol_state = SERIAL_PROTOCOL_STATE_ADDRESS;
+
+            if (serial_protocol_frame_len == 0) {
+                // invalid, ignore
+                serial_protocol_state = SERIAL_PROTOCOL_STATE_IDLE;
+                break;
+            } else if (serial_protocol_frame_len >= SERIAL_PROTOCOL_FRAME_BUFFER_SIZE) {
+                // invalid as well
+                if (rx == SERIAL_PROTOCOL_HEADER) {
+                    // this could be a new header
+                    CRC8_INIT(serial_protocol_frame_crc, 0);
+                    CRC8_UPDATE(serial_protocol_frame_crc, rx);
+                    // stay in this state and abort
+                    break;
+                } else {
+                    // abort
+                    serial_protocol_state = SERIAL_PROTOCOL_STATE_IDLE;
+                    break;
+                }
+            } else {
+                // valid data
+                serial_protocol_state = SERIAL_PROTOCOL_STATE_COMMAND;
+            }
             break;
 
-        case(SERIAL_PROTOCOL_STATE_ADDRESS):
-            // fetch address
-            serial_protocol_frame_address = rx;
-            serial_protocol_frame_data_count = 0;
+        case(SERIAL_PROTOCOL_STATE_COMMAND):
+            // fetch data blob
+            serial_protocol_frame_command = rx;
+
+            // set data ptr
+            serial_protocol_frame_data_todo = serial_protocol_frame_len;
+            serial_protocol_frame_data_ptr  = &serial_protocol_frame_data[0];
+
+            // update state
             serial_protocol_state = SERIAL_PROTOCOL_STATE_DATA;
             break;
 
         case(SERIAL_PROTOCOL_STATE_DATA):
-            // fetch n data bytes
-            serial_protocol_frame_data[serial_protocol_frame_data_count++] = rx;
-            serial_protocol_frame_len--;
+            *serial_protocol_frame_data_ptr++ = rx;
+            serial_protocol_frame_data_todo--;
 
-            if (serial_protocol_frame_len == 0) {
-                // finished, next byte is checksum
+            // len testing:
+            if (!(serial_protocol_frame_data_todo)) {
+                // finished with this buffer
                 serial_protocol_state = SERIAL_PROTOCOL_STATE_CHECKSUM;
             }
             break;
@@ -171,21 +204,57 @@ void serial_process(void) {
         case(SERIAL_PROTOCOL_STATE_CHECKSUM):
             if (serial_protocol_frame_crc == 0) {
                 // valid data!
-                switch(serial_protocol_frame_address) {
+                // [0]        = command
+                // [1..(n-1)] = data
+                switch(serial_protocol_frame_command) {
                     default:
                         break;
-                    case(0x05):  // DMAH
-                        video_char_buffer_write_ptr = (serial_protocol_frame_data[0] << 8) | (video_char_buffer_write_ptr & 0xFF);
-                        break;
-                    case(0x06):  // DMAL
-                        video_char_buffer_write_ptr = (video_char_buffer_write_ptr & 0xFF00) | serial_protocol_frame_data[0];
-                        break;
-                    case(0x07):
-                        if (video_char_buffer_write_ptr < VIDEO_CHAR_BUFFER_WIDTH * VIDEO_CHAR_BUFFER_HEIGHT) {
-                            uint8_t *ptr = (&video_char_buffer[0][0]) + video_char_buffer_write_ptr;
-                            *ptr = serial_protocol_frame_data[0];
+
+                    case(0x00):
+                    case(0x01):
+                    case(0x02):
+                    case(0x03):
+                        // thos cammands write to page 0, 1, 2, or 3
+                        {
+                            if (serial_protocol_frame_len >= 2) {
+                                // at least 1 byte command + 1 byte addressoffset + 1 data byte is required
+                                uint16_t p = (serial_protocol_frame_command << 8) | (serial_protocol_frame_data[0] & 0xFF);
+                                uint8_t  len = serial_protocol_frame_len - 1;
+
+                                // make sure not to exceed the buffer
+                                if ((p + len) < VIDEO_CHAR_BUFFER_WIDTH * VIDEO_CHAR_BUFFER_HEIGHT){
+                                    // safe to process
+                                    uint8_t *data_buf_ptr = &serial_protocol_frame_data[1];
+                                    uint8_t *char_buf_ptr = &video_char_buffer[0][0];
+
+                                    // add adress offset:
+                                    char_buf_ptr += p;
+
+                                    // set all bytes
+                                    while (len--) {
+                                        *char_buf_ptr++ = *data_buf_ptr++;
+                                    }
+                                }
+                            }
                         }
                         break;
+
+                    case(0x07):
+                        // set AETR stick pos
+                        video_stick_data[0] = serial_protocol_frame_data[0];
+                        video_stick_data[1] = serial_protocol_frame_data[1];
+                        video_stick_data[2] = serial_protocol_frame_data[2];
+                        video_uart_checksum_err = serial_protocol_frame_data[2];
+                        video_stick_data[3] = serial_protocol_frame_data[3];
+                        break;
+                }
+            }else{
+                video_uart_checksum_err++;
+                if (rx == SERIAL_PROTOCOL_HEADER) {
+                    serial_protocol_state = SERIAL_PROTOCOL_STATE_LEN;
+                    CRC8_INIT(serial_protocol_frame_crc, 0);
+                    CRC8_UPDATE(serial_protocol_frame_crc, rx);
+                    break;
                 }
             }
 

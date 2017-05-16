@@ -721,3 +721,4 @@ src/video_timer.c
 src/video_timer.h
 src/serial.h
 src/serial.c
+src/crc8.h

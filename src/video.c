@@ -32,17 +32,18 @@
 static void video_put_uint16(uint8_t *buffer, uint16_t val);
 static void video_render_blank(uint16_t line);
 uint16_t video_char_buffer_write_ptr;
+volatile uint8_t video_stick_data[4];
 
 video_line_t video_line;
 //volatile uint16_t video_buffer[2][2][VIDEO_BUFFER_WIDTH/2];
 uint8_t video_char_buffer[VIDEO_CHAR_BUFFER_HEIGHT][VIDEO_CHAR_BUFFER_WIDTH];
 //volatile uint32_t video_buffer_fill_request;
 volatile uint32_t video_unprocessed_frame_count;
- volatile uint32_t video_uart_overrun;
+volatile uint32_t video_uart_overrun;
+volatile uint32_t video_uart_checksum_err;
 //volatile uint32_t video_line;
 volatile uint32_t video_field;
 volatile uint32_t video_buffer_page;
-
 
 void video_init(void) {
     debug_function_call();
@@ -64,18 +65,17 @@ void video_init(void) {
 
     led_off();
 
-
+    // clear char buffer
     for (uint8_t y=0; y<VIDEO_CHAR_BUFFER_HEIGHT; y++) {
         for (uint8_t x=0; x<VIDEO_CHAR_BUFFER_WIDTH; x++) {
             video_char_buffer[y][x] = ' ';
         }
     }
 
-    for (uint8_t x=0; x<VIDEO_CHAR_BUFFER_WIDTH; x++) {
-        video_char_buffer[VIDEO_CHAR_BUFFER_HEIGHT-1][x] = '0' + x;
-    }
+    video_render_init();
 
     video_unprocessed_frame_count = 0;
+    video_uart_checksum_err = 0;
 }
 
 void video_render_blank(uint16_t line) {
@@ -83,25 +83,61 @@ void video_render_blank(uint16_t line) {
     VIDEO_CLEAR_BUFFER(BLACK, video_line.fill_request);
     VIDEO_CLEAR_BUFFER(WHITE, video_line.fill_request);
 
-    // we have soem time left, use it:
+    // we have some time left, use it:
     switch (line) {
         default:
             //nothing to do
             break;
-
+#if 1
         case(VIDEO_FIRST_ACTIVE_LINE-1):
             // show some statistics
             // update missing frames
-            video_put_uint16((uint8_t*)&video_char_buffer[1][0], video_unprocessed_frame_count);
+            video_put_uint16((uint8_t*)&video_char_buffer[1][30], video_unprocessed_frame_count);
+            video_char_buffer[1][29] = 'M';
             break;
 
         case(VIDEO_FIRST_ACTIVE_LINE-2):
             //uart overrun counter
-            video_put_uint16((uint8_t*)&video_char_buffer[1][10], video_uart_overrun);
+            video_put_uint16((uint8_t*)&video_char_buffer[2][30], video_uart_overrun);
+            video_char_buffer[2][29] = 'U';
             break;
 
-    }
+        case(VIDEO_FIRST_ACTIVE_LINE-3):
+            //uart checksum err counter
+            video_put_uint16((uint8_t*)&video_char_buffer[3][30], video_uart_checksum_err);
+            video_char_buffer[3][29] = 'C';
+            break;
 
+        case(VIDEO_FIRST_ACTIVE_LINE-4):
+            /*video_stick_buffer_offset = video_stick_data[2];
+            // pre render stick x pos
+            uint8_t x_offset      = video_stick_data[3]/8;
+            uint8_t x_offset_fine = video_stick_data[3]-4) & 0x07;
+
+            uint8_t *buf_w = &video_stick_buffer[WHITE][0][0];
+            uint8_t *buf_b = &video_stick_buffer[BLACK][0][0];
+
+            for (uint8_t y=0; y<8; y++) {
+                uint8_t x = 0;
+
+                while (x++ < x_offset) {
+                    *buf_w++ = 0;
+                    *buf_b++ = 0;
+                }
+
+                // render stick
+                *buf_w++ = (video_render_stick[WHITE][y] >> x_offset_fine);
+                *buf_b++ = (video_render_stick[BLACK][y] >> x_offset_fine);
+                x++;
+
+                while(x++ <= VIDEO_RENDER_STICK_SIZE_X/8) {
+                    *buf_w++ = 0;
+                    *buf_b++ = 0;
+                }
+            }*/
+            break;
+#endif
+    }
 }
 
 void video_main_loop(void) {
@@ -122,12 +158,18 @@ void video_main_loop(void) {
             }else{
                 //visible line -> render data
                 uint16_t visible_line = video_line.active_line - VIDEO_FIRST_ACTIVE_LINE;
-
-                if ((visible_line > VIDEO_START_LINE_ANIMATION) && (visible_line < VIDEO_END_LINE_ANIMATION)) {
+#if 0
+                if ((visible_line >= VIDEO_START_LINE_ANIMATION) && (visible_line <= VIDEO_END_LINE_ANIMATION)) {
                     video_render_animation(visible_line);
+                }else if((visible_line >= VIDEO_START_LINE_STICKS) && (visible_line <= VIDEO_END_LINE_STICKS)){
+                    video_render_sticks(visible_line);
                 }else{
                     video_render_text(visible_line);
                 }
+#else
+                video_render_text(visible_line);
+                video_render_overlay_sticks(visible_line);
+#endif
             }
 
             // make sure the last 4 bytes are always disabled
