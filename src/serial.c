@@ -244,8 +244,9 @@ void serial_process(void) {
                         video_stick_data[0] = serial_protocol_frame_data[0];
                         video_stick_data[1] = serial_protocol_frame_data[1];
                         video_stick_data[2] = serial_protocol_frame_data[2];
-                        video_uart_checksum_err = serial_protocol_frame_data[2];
                         video_stick_data[3] = serial_protocol_frame_data[3];
+                        video_armed_state =  serial_protocol_frame_data[4];
+                        video_uart_checksum_err = video_armed_state;
                         break;
                 }
             }else{

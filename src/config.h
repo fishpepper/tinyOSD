@@ -1,5 +1,7 @@
 #define LED_GPIO GPIOC
 #define LED_PIN  GPIO8
+//#define LED_GPIO GPIOA
+//#define LED_PIN  GPIO5
 
 #if 0
 #define DEBUG_GPIO      GPIOA

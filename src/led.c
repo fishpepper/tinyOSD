@@ -29,6 +29,14 @@ void led_init(void) {
     gpio_mode_setup(LED_GPIO, GPIO_MODE_OUTPUT, GPIO_PUPD_NONE, LED_PIN);
     gpio_set_output_options(LED_GPIO, GPIO_OTYPE_PP, GPIO_OSPEED_2MHZ, LED_PIN);
 
+    // some debug blinking
+    for(uint8_t i=0; i<4; i++) {
+        led_toggle();
+        for(uint8_t t=0; t<200; t++) {
+            delay_us(1000);
+        }
+    }
+
     led_on();
 }
 

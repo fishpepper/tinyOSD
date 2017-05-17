@@ -44,9 +44,12 @@ volatile uint32_t video_uart_checksum_err;
 //volatile uint32_t video_line;
 volatile uint32_t video_field;
 volatile uint32_t video_buffer_page;
+uint8_t video_armed_state;
 
 void video_init(void) {
     debug_function_call();
+
+    video_armed_state = 0;
 
     // initialize line buffer
     video_line.currently_rendering = 0;
@@ -92,20 +95,20 @@ void video_render_blank(uint16_t line) {
         case(VIDEO_FIRST_ACTIVE_LINE-1):
             // show some statistics
             // update missing frames
-            video_put_uint16((uint8_t*)&video_char_buffer[1][30], video_unprocessed_frame_count);
-            video_char_buffer[1][29] = 'M';
+            video_put_uint16((uint8_t*)&video_char_buffer[3+0][30], video_unprocessed_frame_count);
+            video_char_buffer[3+0][29] = 'M';
             break;
 
         case(VIDEO_FIRST_ACTIVE_LINE-2):
             //uart overrun counter
-            video_put_uint16((uint8_t*)&video_char_buffer[2][30], video_uart_overrun);
-            video_char_buffer[2][29] = 'U';
+            video_put_uint16((uint8_t*)&video_char_buffer[3+1][30], video_uart_overrun);
+            video_char_buffer[3+1][29] = 'U';
             break;
 
         case(VIDEO_FIRST_ACTIVE_LINE-3):
             //uart checksum err counter
-            video_put_uint16((uint8_t*)&video_char_buffer[3][30], video_uart_checksum_err);
-            video_char_buffer[3][29] = 'C';
+            video_put_uint16((uint8_t*)&video_char_buffer[3+2][30], video_uart_checksum_err);
+            video_char_buffer[3+2][29] = 'C';
             break;
 
         case(VIDEO_FIRST_ACTIVE_LINE-4):
@@ -167,8 +170,17 @@ void video_main_loop(void) {
                     video_render_text(visible_line);
                 }
 #else
-                video_render_text(visible_line);
-                video_render_overlay_sticks(visible_line);
+                if ( ((video_armed_state & (1<<3)) == 0) &&
+                     (visible_line >= VIDEO_START_LINE_ANIMATION) &&
+                     (visible_line <= VIDEO_END_LINE_ANIMATION)
+                   ) {
+                    // never armed and inside ani window -> show animation
+                    video_render_animation(visible_line);
+                } else {
+                    video_render_text(visible_line);
+                    video_render_overlay_sticks(visible_line);
+                }
+
 #endif
             }
 

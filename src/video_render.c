@@ -81,6 +81,15 @@ void video_render_overlay_sticks(uint16_t visible_line) {
             //*buf_b++ = 0xFF;
         }
 
+        buf_w =  (uint8_t *)&video_line.buffer[WHITE][page_to_render][VIDEO_RENDER_STICK_POS_X2/8/2];
+        buf_w += 1 +  ((VIDEO_RENDER_STICK_POS_X2/8) & 1);
+
+        for (uint8_t i=VIDEO_RENDER_STICK_POS_X/8; i<((VIDEO_RENDER_STICK_POS_X + VIDEO_RENDER_STICK_SIZE_X)/8); i++){
+            *buf_w++ = 0xFF;
+            //*buf_b++ = 0xFF;
+        }
+
+
     } else if (py == video_stick_data[2]) {
             // y value matches, render point at valid x pos
             uint8_t *buf_w = (uint8_t *)&video_line.buffer[WHITE][page_to_render][0];
@@ -108,6 +117,33 @@ void video_render_overlay_sticks(uint16_t visible_line) {
             *buf_w++ |= (v32w >> 16) & 0xFF;
             *buf_w++ |= (v32w >> 8) & 0xFF;
             *buf_w++ |= v32w & 0xFF;
+    } else if (py == video_stick_data[1]) {
+        // y value matches, render point at valid x pos
+        uint8_t *buf_w = (uint8_t *)&video_line.buffer[WHITE][page_to_render][0];
+        // add valid point
+        uint8_t xr = VIDEO_RENDER_STICK_POS_X2/8 + video_stick_data[0]/8;
+        uint8_t xm = video_stick_data[0] & 0x07;  // = %8
+        uint32_t v32w = 0b110110000000000000 >> xm;
+        //uint32_t v32b = 0b001000000000000000 >> xm;
+        buf_w = (uint8_t *)&video_line.buffer[WHITE][page_to_render][0];
+        buf_w += xr + 1 - 1;
+
+        *buf_w++ |= (v32w >> 16) & 0xFF;
+        *buf_w++ |= (v32w >> 8) & 0xFF;
+        *buf_w++ |= v32w & 0xFF;
+
+    } else if ((py == video_stick_data[1]-1) || (py == video_stick_data[1]+1)){
+            // y +/- 1 matches, render point at valid x pos
+            uint8_t xr = VIDEO_RENDER_STICK_POS_X2/8 + video_stick_data[0]/8;
+            uint8_t xm = video_stick_data[0] & 0x07;  // = %8
+            uint32_t v32w = 0b00000011100000000000000 >> xm;
+
+            uint8_t *buf_w = (uint8_t *)&video_line.buffer[WHITE][page_to_render][0];
+            buf_w += xr + 1 - 1;
+
+            *buf_w++ |= (v32w >> 16) & 0xFF;
+            *buf_w++ |= (v32w >> 8) & 0xFF;
+            *buf_w++ |= v32w & 0xFF;
     }
 
     // add border
@@ -117,6 +153,19 @@ void video_render_overlay_sticks(uint16_t visible_line) {
     // white is shiftet 1 byte
     // plus shift for non 16bit aligned start positions:
     buf_w += 1 +  ((VIDEO_RENDER_STICK_POS_X/8) & 1);
+
+    // render border
+    *buf_w = (*buf_w) | 0x80;
+    //*buf_b = (*buf_b) | 0x80;
+
+    buf_w += VIDEO_RENDER_STICK_SIZE_X/8 - 1;
+    //buf_b += VIDEO_RENDER_STICK_SIZE_X/8 - 1;
+
+    *buf_w = (*buf_w) | 0x01;
+    //*buf_b = (*buf_b) | 0x01;
+
+    buf_w =  (uint8_t *)&video_line.buffer[WHITE][page_to_render][VIDEO_RENDER_STICK_POS_X2/8/2];
+    buf_w += 1 +  ((VIDEO_RENDER_STICK_POS_X2/8) & 1);
 
     // render border
     *buf_w = (*buf_w) | 0x80;
@@ -349,8 +398,8 @@ void video_render_animation(uint16_t visible_line) {
     if (VIDEO_DEBUG_DURATION_ANIMATION) led_on();
 
     //uint32_t data = 0;
-    uint32_t logo_start_line = VIDEO_CENTER_ACTIVE_LINE - LOGO_HEIGHT/2;
-    uint32_t logo_end_line   = VIDEO_CENTER_ACTIVE_LINE + LOGO_HEIGHT/2;
+    uint32_t logo_start_line = VIDEO_CENTER_LINE_ANIMATION - LOGO_HEIGHT/2;
+    uint32_t logo_end_line   = VIDEO_CENTER_LINE_ANIMATION + LOGO_HEIGHT/2;
 
     uint32_t logo_offset;
     uint16_t *logo_ptr;
@@ -358,7 +407,7 @@ void video_render_animation(uint16_t visible_line) {
     uint8_t ani_dir;
 
 
-    if (visible_line == VIDEO_CENTER_ACTIVE_LINE) {
+    if (visible_line == VIDEO_START_LINE_ANIMATION) {
         video_render_ani_count+=4;
         if (video_render_ani_count >=360) {
             video_render_ani_count -= 360;
@@ -383,8 +432,8 @@ void video_render_animation(uint16_t visible_line) {
     // calculate line number:
     uint32_t line    = visible_line + 2;
 
-    logo_start_line = VIDEO_CENTER_ACTIVE_LINE - (scale * LOGO_HEIGHT/2) / 128;
-    logo_end_line   = VIDEO_CENTER_ACTIVE_LINE + (scale * LOGO_HEIGHT/2) / 128;
+    logo_start_line = VIDEO_CENTER_LINE_ANIMATION - (scale * LOGO_HEIGHT/2) / 128;
+    logo_end_line   = VIDEO_CENTER_LINE_ANIMATION + (scale * LOGO_HEIGHT/2) / 128;
 
     logo_offset = (line - logo_start_line) * 128 / scale * (LOGO_WIDTH/8);
 
@@ -413,6 +462,8 @@ void video_render_animation(uint16_t visible_line) {
     }
     if (VIDEO_DEBUG_DURATION_ANIMATION) led_off();
 }
+
+
 
 #if 0
 static void video_init_rcc(void);
