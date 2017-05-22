@@ -3,13 +3,14 @@
 #
 import sys
 
-if len(sys.argv) < 2:
-    print "usage: " + sys.argv[0] + " file.ppm\n\n"
+if len(sys.argv) < 3:
+    print "usage: " + sys.argv[0] + " file.ppm src/logo.h\n\n"
     sys.exit(1)
 
 fn = sys.argv[1]
 fh = open(fn, "r")
-out = open("src/logo.h", "w")
+outfn = sys.argv[2]
+out = open(outfn, "w")
 
 header    = fh.readline()
 comment   = fh.readline()
@@ -47,7 +48,7 @@ for line in fh:
         # white overlay
         imagedata[0].append(1)
         imagedata[1].append(0)
-    elif (red_val == 128):
+    elif (red_val > 60) and (red_val < 180):
         # transparent
         imagedata[0].append(0)
         imagedata[1].append(0)
@@ -92,9 +93,9 @@ image_hwords = [[], []]
 
 for c in range(2):
     count = 1-c #white is 1 byte shifted
-    hw = 0
+    hw = 0x00
     for x in image_bytes[c]:
-        hw = (hw >> 8) | (x<<8)
+        hw = (hw>>8) | (x<<8)
         if (count == 2):
            image_hwords[c].append(hw)
            hw = 0

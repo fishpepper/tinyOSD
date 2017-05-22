@@ -1,25 +1,19 @@
+#define USE_EVALBOARD 1
+
+#if USE_EVALBOARD
+// eval board
 #define LED_GPIO GPIOC
 #define LED_PIN  GPIO8
-//#define LED_GPIO GPIOA
-//#define LED_PIN  GPIO5
-
-#if 0
-#define DEBUG_GPIO      GPIOA
-#define DEBUG_GPIO_AF   GPIO_AF1
-#define DEBUG_UART      USART2
-#define DEBUG_UART_RCC  RCC_USART2
-#define DEBUG_TX_PIN    GPIO14
-#define DEBUG_UART_BAUDRATE 115200
-
-#define SERIAL_GPIO      GPIOA
-#define SERIAL_GPIO_AF   GPIO_AF1
-#define SERIAL_UART      USART
-#define SERIAL_UART_RCC  RCC_USART1
-#define SERIAL_TX_PIN    GPIO9
-#define SERIAL_RX_PIN    GPIO10
-#define SERIAL_UART_BAUDRATE 115200
-
+#define VIDEO_BSYNC_VOLTAGE_MV 100
+#define VIDEO_DAC_VCC       3.0
 #else
+// camOSD
+#define LED_GPIO GPIOA
+#define LED_PIN  GPIO5
+#define VIDEO_BSYNC_VOLTAGE_MV 210
+#define VIDEO_DAC_VCC       1.8
+#endif
+
 #define DEBUG_GPIO      GPIOA
 #define DEBUG_GPIO_AF   GPIO_AF1
 #define DEBUG_UART      USART2
@@ -34,7 +28,6 @@
 #define SERIAL_TX_PIN    GPIO9
 #define SERIAL_RX_PIN    GPIO10
 #define SERIAL_UART_BAUDRATE 115200
-#endif
 
 #define SERIAL_OVERRUN_DETECTION_DISABLED 1
 
@@ -47,9 +40,14 @@
 #define VIDEO_GPIO          GPIOA
 #define VIDEO_INPUT_PIN     GPIO1
 #define VIDEO_DAC_OUT_PIN   GPIO4
-#define VIDEO_DAC_VCC       3.0
 
-#define VIDEO_GPIO_BLACK          GPIOB
+
+#define VIDEO_BLACK_GPIO          GPIOB
+#define VIDEO_WHITE_GPIO          GPIOB
+#define VIDEO_WHITE_MOSI_PIN  GPIO5
+#define VIDEO_WHITE_SCK_PIN   GPIO3
+#define VIDEO_BLACK_MOSI_PIN  GPIO15
+#define VIDEO_BLACK_SCK_PIN   GPIO13
 
 #define VIDEO_COMP_EXTI_SOURCE         GPIOA
 #define VIDEO_COMP_EXTI_SOURCE_LINE    EXTI21
@@ -64,6 +62,22 @@
 #define VIDEO_DMA_WHITE         DMA1
 #define VIDEO_DMA_BLACK         DMA1
 #define VIDEO_DMA_CHANNEL_WHITE DMA_CHANNEL3
+
+
+//#define DEBUG_GPIO      GPIOA
+//#define DEBUG_GPIO_AF   GPIO_AF1
+//#define DEBUG_UART      USART2
+//#define DEBUG_UART_RCC  RCC_USART2
+//#define DEBUG_TX_PIN    GPIO14
+//#define DEBUG_UART_BAUDRATE 115200
+//
+//#define SERIAL_GPIO      GPIOA
+//#define SERIAL_GPIO_AF   GPIO_AF1
+//#define SERIAL_UART      USART
+//#define SERIAL_UART_RCC  RCC_USART1
+//#define SERIAL_TX_PIN    GPIO9
+//#define SERIAL_RX_PIN    GPIO10
+//#define SERIAL_UART_BAUDRATE 115200
 
 
 

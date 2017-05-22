@@ -26,6 +26,8 @@
 #include "clocksource.h"
 #include "led.h"
 #include "logo.h"
+#include "pilotlogo.h"
+
 #include "font.h"
 
 #include <string.h>
@@ -300,11 +302,29 @@ void video_render_sticks(uint16_t visible_line) {
 void video_render_text(uint16_t visible_line) {
     if (VIDEO_DEBUG_DURATION_TEXTLINE) led_on();
 
-    // even and odd lines render the same data in text mode:
-    visible_line = visible_line / 2;
 
-    uint8_t text_row = visible_line / 18;
-    uint8_t font_row = visible_line % 18;
+    // even and odd lines render the same data in text mode:
+    uint16_t text_line = visible_line / 2;
+
+    uint8_t text_row = text_line / 18;
+    uint8_t font_row = text_line % 18;
+
+    if ((text_row == 1)) {
+        // render pilot logo!
+        uint8_t page_to_fill = video_line.fill_request;
+        uint16_t pilotlogo_row = (visible_line - (2*18))*(176/16);
+
+        uint16_t *pilot_w_ptr =  (uint16_t*)&pilot_logo_data16[WHITE][pilotlogo_row];
+        uint16_t *pilot_b_ptr =  (uint16_t*)&pilot_logo_data16[BLACK][pilotlogo_row];
+        uint16_t *video_buffer_w_ptr = (uint16_t *)&video_line.buffer[WHITE][page_to_fill][0];
+        uint16_t *video_buffer_b_ptr = (uint16_t *)&video_line.buffer[BLACK][page_to_fill][0];
+
+        for (uint16_t text_col = 0; text_col < 11; text_col++) {
+            *video_buffer_w_ptr++ = *pilot_w_ptr++;
+            //*video_buffer_b_ptr++ = *pilot_b_ptr++;
+        }
+        return;
+    }
 
     if (text_row < VIDEO_CHAR_BUFFER_HEIGHT){
         // render text
@@ -327,19 +347,18 @@ RUN_FROM_RAM static void video_render_text_row(uint8_t text_row, uint8_t font_ro
     uint8_t page_to_fill = video_line.fill_request;
 
     uint8_t *video_buffer_ptr[2];
-    video_buffer_ptr[0] = (uint8_t*) &video_line.buffer[WHITE][page_to_fill][0];
-    video_buffer_ptr[1] = (uint8_t*) &video_line.buffer[BLACK][page_to_fill][0];
+    video_buffer_ptr[WHITE] = (uint8_t*) &video_line.buffer[WHITE][page_to_fill][0];
+    video_buffer_ptr[BLACK] = (uint8_t*) &video_line.buffer[BLACK][page_to_fill][0];
 
     // white data has to be shifted one byte with the first byte cleared
     *video_buffer_ptr[0]++ = 0x00;
-
 
     uint8_t *char_ptr = &video_char_buffer[text_row][0];
 
     uint8_t *font_ptr_row = (uint8_t*)&font_data[0][font_row][0];
     uint16_t *font_ptr_row16 = (uint16_t*)&font_data[1][font_row][0];
-
     uint16_t *b16 = (uint16_t*)&video_line.buffer[BLACK][page_to_fill][0];
+
 
     for (uint32_t text_col = 0; text_col < VIDEO_CHAR_BUFFER_WIDTH; text_col++) {
         //use manual loop unrolling here, subtract char ptr and add etc
@@ -350,8 +369,8 @@ RUN_FROM_RAM static void video_render_text_row(uint8_t text_row, uint8_t font_ro
             //uint16_t index = video_char_buffer[text_row][text_col]*3;
             uint8_t *font_ptr = font_ptr_row + index*2;
 
-            *video_buffer_ptr[0]++ = *font_ptr++;
-            *video_buffer_ptr[0]++ = *font_ptr++;
+            *video_buffer_ptr[WHITE]++ = *font_ptr++;
+            *video_buffer_ptr[WHITE]++ = *font_ptr++;
 
             // get black font data:
             //font_ptr += sizeof(font_data[0])-2; //(uint8_t*)&font_data[1][font_row][index*2];
