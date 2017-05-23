@@ -32,6 +32,11 @@
 
 #include <string.h>
 
+#if ((PILOTLOGO_HEIGHT != 36) || (PILOTLOGO_WIDTH != 176))
+#ERROR invalid pilot logo size! use 176x36!
+#endif
+
+
 RUN_FROM_RAM static void video_render_text_row(uint8_t text_row, uint8_t font_row);
 
 static const uint32_t video_cos_table[90] = {
@@ -298,33 +303,39 @@ void video_render_sticks(uint16_t visible_line) {
 
 }
 
+void video_render_pilot_logo(uint16_t visible_line) {
+    // render pilot logo!
+    uint8_t page_to_fill = video_line.fill_request;
+
+    // calc current row (overflows if visible_line < logo start -> big integer)
+    uint16_t row = visible_line - VIDEO_START_PILOT_LOGO_Y;
+    if (row >= PILOTLOGO_HEIGHT) {
+        // row < start_y -> row is "negative" -> big number -> false
+        // row > start_y + height -> false
+        // -> DO NOT render logo
+    } else {
+        // valid region -> render pilot logo
+        uint16_t *pilot_w_ptr =  (uint16_t*)&pilotlogo_data16[WHITE][row];
+        uint16_t *pilot_b_ptr =  (uint16_t*)&pilotlogo_data16[BLACK][row];
+        uint16_t *video_buffer_w_ptr = (uint16_t *)&video_line.buffer[WHITE][page_to_fill][0];
+        uint16_t *video_buffer_b_ptr = (uint16_t *)&video_line.buffer[BLACK][page_to_fill][0];
+
+        // pilot logo has to be 176 x 36px
+        // 176/16bit = 11 uint16_t entries
+        // for fast access use manual loop unrolling here:
+        UNROLL_LOOP(11, {*video_buffer_w_ptr++ = *pilot_w_ptr++;});
+        UNROLL_LOOP(11, {*video_buffer_b_ptr++ = *pilot_b_ptr++;});
+    }
+}
 
 void video_render_text(uint16_t visible_line) {
     if (VIDEO_DEBUG_DURATION_TEXTLINE) led_on();
-
 
     // even and odd lines render the same data in text mode:
     uint16_t text_line = visible_line / 2;
 
     uint8_t text_row = text_line / 18;
     uint8_t font_row = text_line % 18;
-
-    if ((text_row == 1)) {
-        // render pilot logo!
-        uint8_t page_to_fill = video_line.fill_request;
-        uint16_t pilotlogo_row = (visible_line - (2*18))*(176/16);
-
-        uint16_t *pilot_w_ptr =  (uint16_t*)&pilot_logo_data16[WHITE][pilotlogo_row];
-        uint16_t *pilot_b_ptr =  (uint16_t*)&pilot_logo_data16[BLACK][pilotlogo_row];
-        uint16_t *video_buffer_w_ptr = (uint16_t *)&video_line.buffer[WHITE][page_to_fill][0];
-        uint16_t *video_buffer_b_ptr = (uint16_t *)&video_line.buffer[BLACK][page_to_fill][0];
-
-        for (uint16_t text_col = 0; text_col < 11; text_col++) {
-            *video_buffer_w_ptr++ = *pilot_w_ptr++;
-            //*video_buffer_b_ptr++ = *pilot_b_ptr++;
-        }
-        return;
-    }
 
     if (text_row < VIDEO_CHAR_BUFFER_HEIGHT){
         // render text

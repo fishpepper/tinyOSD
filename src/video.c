@@ -179,6 +179,12 @@ void video_main_loop(void) {
                 } else {
                     video_render_text(visible_line);
                     video_render_overlay_sticks(visible_line);
+
+                    if (video_armed_state & (1<<2)) {
+                        // copter is armed -> overlay pilot log
+                        video_render_pilot_logo(visible_line);
+                    }
+
                 }
 
 #endif

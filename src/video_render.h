@@ -29,7 +29,7 @@ void video_render_init(void);
 void video_render_animation(uint16_t visible_line);
 void video_render_text(uint16_t visible_line);
 void video_render_sticks(uint16_t visible_line);
-
+void video_render_pilot_logo(uint16_t  visible_line);
 void video_render_overlay_sticks(uint16_t visible_line);
 
 
