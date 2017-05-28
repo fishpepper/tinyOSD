@@ -23,5 +23,6 @@
 #include <stdint.h>
 
 void video_timer_init(void);
+void video_timer_init_interrupt(void);
 
 #endif  // VIDEO_TIMER_H_

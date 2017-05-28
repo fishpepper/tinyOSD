@@ -23,14 +23,19 @@
 #include "video_spi_dma.h"
 #include "video_timer.h"
 #include "debug.h"
+#include "timeout.h"
 #include "led.h"
 #include "serial.h"
 
 #include <stdio.h>
 #include <string.h>
 
+#include <libopencm3/stm32/comparator.h>
+
 static void video_put_uint16(uint8_t *buffer, uint16_t val);
 static void video_render_blank(uint16_t line);
+static void video_detect_blank_level(void);
+static void video_detect_pal_ntsc(void);
 uint16_t video_char_buffer_write_ptr;
 volatile uint8_t video_stick_data[4];
 
@@ -45,11 +50,14 @@ volatile uint32_t video_uart_checksum_err;
 volatile uint32_t video_field;
 volatile uint32_t video_buffer_page;
 uint8_t video_armed_state;
+uint8_t video_mode;
+
 
 void video_init(void) {
     debug_function_call();
 
     video_armed_state = 0;
+    video_mode = VIDEO_MODE_NTSC;
 
     // initialize line buffer
     video_line.currently_rendering = 0;
@@ -62,12 +70,6 @@ void video_init(void) {
     VIDEO_CLEAR_BUFFER(WHITE, 0);
     VIDEO_CLEAR_BUFFER(WHITE, 1);
 
-    video_io_init();
-    video_spi_dma_init();
-    video_timer_init();
-
-    led_off();
-
     // clear char buffer
     for (uint8_t y=0; y<VIDEO_CHAR_BUFFER_HEIGHT; y++) {
         for (uint8_t x=0; x<VIDEO_CHAR_BUFFER_WIDTH; x++) {
@@ -75,10 +77,79 @@ void video_init(void) {
         }
     }
 
-    video_render_init();
-
     video_unprocessed_frame_count = 0;
     video_uart_checksum_err = 0;
+
+    video_io_init();
+    video_spi_dma_init();
+    video_timer_init();
+
+    // detect blank voltage level
+    video_detect_blank_level();
+
+    // enable interrupt routine
+    video_timer_init_interrupt();
+
+    // detect pal or ntsc
+    video_detect_pal_ntsc();
+
+    led_off();
+
+    video_render_init();
+
+}
+
+static void video_detect_pal_ntsc(void) {
+    // detect ntsc/pal based on the number of lines
+    // timeout >2 pal or nts frames
+    uint16_t max_line = 0;
+
+    timeout_set(1000/30 * 3);
+    while(!timeout_timed_out()) {
+        if (video_line.active_line > max_line) {
+            max_line = video_line.active_line;
+        }
+    }
+
+    debug("video: max_line = "); debug_put_uint16(max_line); debug_put_newline();
+    if (max_line  > 600) {
+        video_mode = VIDEO_MODE_PAL;
+    } else {
+        video_mode = VIDEO_MODE_NTSC;
+    }
+}
+
+static void video_detect_blank_level(void) {
+    // first: find blank level. start with 0mV and search up to 300mV
+    // this should not take too long, let's do this within < 500ms
+    // -> use 10 frames
+    // -> more than 4800 lines
+    uint16_t blank_mv_best = 0;
+
+    for(uint16_t blank_mv = 0; blank_mv < VIDEO_BLANK_LEVEL_DETECTION_MAX_MV; blank_mv += 5) {
+        // set voltage
+        video_io_set_dac_value_mv(blank_mv);
+
+        // try to count roughly 100 lines
+        // pal: 15625  lines per second = ~6.4ms per 100 lines
+        // 6ms counting interval should be good:
+        timeout_set(6);
+        uint16_t line_counter = 0;
+        while(!timeout_timed_out()) {
+            // count edges
+            if (COMP_CSR(COMP1) & (1<<14)) {
+                // rising edge
+                while (COMP_CSR(COMP1) & (1<<14)) {}
+                line_counter++;
+            }
+        }
+
+        if ((blank_mv_best == 0) && (line_counter > 150)) {
+            blank_mv_best = blank_mv * 0.4;
+        }
+        //debug("tc "); debug_put_uint16(blank_mv); debug("="); debug_put_uint16(line_counter);debug_put_newline();
+    }
+    video_io_set_dac_value_mv(blank_mv_best);
 }
 
 void video_render_blank(uint16_t line) {
@@ -91,54 +162,36 @@ void video_render_blank(uint16_t line) {
         default:
             //nothing to do
             break;
-#if 1
+#if VIDEO_RENDER_DEBUG_DATA
         case(VIDEO_FIRST_ACTIVE_LINE-1):
             // show some statistics
             // update missing frames
-            video_put_uint16((uint8_t*)&video_char_buffer[3+0][30], video_unprocessed_frame_count);
-            video_char_buffer[3+0][29] = 'M';
+            video_put_uint16((uint8_t*)&video_char_buffer[5+0][30], video_unprocessed_frame_count);
+            video_char_buffer[5+0][29] = 'M';
             break;
 
         case(VIDEO_FIRST_ACTIVE_LINE-2):
             //uart overrun counter
-            video_put_uint16((uint8_t*)&video_char_buffer[3+1][30], video_uart_overrun);
-            video_char_buffer[3+1][29] = 'U';
+            video_put_uint16((uint8_t*)&video_char_buffer[5+1][30], video_uart_overrun);
+            video_char_buffer[5+1][29] = 'U';
             break;
 
         case(VIDEO_FIRST_ACTIVE_LINE-3):
             //uart checksum err counter
-            video_put_uint16((uint8_t*)&video_char_buffer[3+2][30], video_uart_checksum_err);
-            video_char_buffer[3+2][29] = 'C';
+            video_put_uint16((uint8_t*)&video_char_buffer[5+2][30], video_uart_checksum_err);
+            video_char_buffer[5+2][29] = 'C';
             break;
+
 
         case(VIDEO_FIRST_ACTIVE_LINE-4):
-            /*video_stick_buffer_offset = video_stick_data[2];
-            // pre render stick x pos
-            uint8_t x_offset      = video_stick_data[3]/8;
-            uint8_t x_offset_fine = video_stick_data[3]-4) & 0x07;
-
-            uint8_t *buf_w = &video_stick_buffer[WHITE][0][0];
-            uint8_t *buf_b = &video_stick_buffer[BLACK][0][0];
-
-            for (uint8_t y=0; y<8; y++) {
-                uint8_t x = 0;
-
-                while (x++ < x_offset) {
-                    *buf_w++ = 0;
-                    *buf_b++ = 0;
-                }
-
-                // render stick
-                *buf_w++ = (video_render_stick[WHITE][y] >> x_offset_fine);
-                *buf_b++ = (video_render_stick[BLACK][y] >> x_offset_fine);
-                x++;
-
-                while(x++ <= VIDEO_RENDER_STICK_SIZE_X/8) {
-                    *buf_w++ = 0;
-                    *buf_b++ = 0;
-                }
-            }*/
+            // video mdoe
+            if (video_mode == VIDEO_MODE_NTSC) {
+                strcpy(&video_char_buffer[5+3][30], "NTSC");
+            }else{
+                strcpy(&video_char_buffer[5+3][30], "PAL");
+            }
             break;
+
 #endif
     }
 }
@@ -152,6 +205,10 @@ void video_main_loop(void) {
 
         // is there a new line request?
         if (video_line.fill_request != VIDEO_BUFFER_FILL_REQUEST_IDLE) {
+            #if VIDEO_DEBUG_ODD_EVEN
+            led_set(video_line.active_line & 1);
+            #endif
+
             page_to_fill = video_line.fill_request;
 
             // active or blank line?
@@ -161,33 +218,23 @@ void video_main_loop(void) {
             }else{
                 //visible line -> render data
                 uint16_t visible_line = video_line.active_line - VIDEO_FIRST_ACTIVE_LINE;
-#if 0
-                if ((visible_line >= VIDEO_START_LINE_ANIMATION) && (visible_line <= VIDEO_END_LINE_ANIMATION)) {
-                    video_render_animation(visible_line);
-                }else if((visible_line >= VIDEO_START_LINE_STICKS) && (visible_line <= VIDEO_END_LINE_STICKS)){
-                    video_render_sticks(visible_line);
-                }else{
-                    video_render_text(visible_line);
-                }
-#else
+
                 if ( ((video_armed_state & (1<<3)) == 0) &&
                      (visible_line >= VIDEO_START_LINE_ANIMATION) &&
                      (visible_line <= VIDEO_END_LINE_ANIMATION)
                    ) {
                     // never armed and inside ani window -> show animation
-                    video_render_animation(visible_line);
+                    video_render_animation(page_to_fill, visible_line);
                 } else {
-                    video_render_text(visible_line);
-                    video_render_overlay_sticks(visible_line);
+                    video_render_text(page_to_fill, visible_line);
 
+                    // render some more data when armed
                     if (video_armed_state & (1<<2)) {
-                        // copter is armed -> overlay pilot log
-                        video_render_pilot_logo(visible_line);
+                        // copter is armed
+                        video_render_overlay_sticks(page_to_fill, visible_line);
+                        video_render_pilot_logo(page_to_fill, visible_line);
                     }
-
                 }
-
-#endif
             }
 
             // make sure the last 4 bytes are always disabled

@@ -27,6 +27,7 @@ void led_init(void);
 
 #define led_on()     { gpio_set(LED_GPIO, LED_PIN); }
 #define led_off()    { gpio_clear(LED_GPIO, LED_PIN); }
+#define led_set(__val)     { if (__val) { led_on(); }else{ led_off(); }}
 #define led_toggle() { gpio_toggle(LED_GPIO, LED_PIN); }
 
 #endif  // LED_H_

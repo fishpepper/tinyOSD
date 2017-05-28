@@ -37,7 +37,7 @@
 #endif
 
 
-RUN_FROM_RAM static void video_render_text_row(uint8_t text_row, uint8_t font_row);
+RUN_FROM_RAM static void video_render_text_row(uint8_t page_to_fill, uint8_t text_row, uint8_t font_row);
 
 static const uint32_t video_cos_table[90] = {
 0x80,0x7f,0x7f,0x7f,0x7f,0x7f,0x7f,0x7f,
@@ -63,7 +63,7 @@ void video_render_init(void) {
     video_stick_data[3] = VIDEO_RENDER_STICK_SIZE_X;    // R
 }
 
-void video_render_overlay_sticks(uint16_t visible_line) {
+void video_render_overlay_sticks(uint8_t page_to_fill, uint16_t visible_line) {
     uint16_t py = visible_line - VIDEO_START_LINE_STICKS;
 
     // check if this is inside the stick ui region
@@ -72,12 +72,10 @@ void video_render_overlay_sticks(uint16_t visible_line) {
         return;
     }
 
-    uint16_t page_to_render = video_line.fill_request;
-
     if ((py == 0) || (py == VIDEO_RENDER_STICK_SIZE_Y)) {
         // render top and bottom of stick rect
-        uint8_t *buf_w = (uint8_t *)&video_line.buffer[WHITE][page_to_render][VIDEO_RENDER_STICK_POS_X/8/2];
-        //uint8_t *buf_b = (uint8_t *)&video_line.buffer[BLACK][page_to_render][VIDEO_RENDER_STICK_POS_X/8/2];
+        uint8_t *buf_w = (uint8_t *)&video_line.buffer[WHITE][page_to_fill][VIDEO_RENDER_STICK_POS_X/8/2];
+        //uint8_t *buf_b = (uint8_t *)&video_line.buffer[BLACK][page_to_fill][VIDEO_RENDER_STICK_POS_X/8/2];
 
         // white is shiftet 1 byte
         // plus shift for non 16bit aligned start positions:
@@ -88,7 +86,7 @@ void video_render_overlay_sticks(uint16_t visible_line) {
             //*buf_b++ = 0xFF;
         }
 
-        buf_w =  (uint8_t *)&video_line.buffer[WHITE][page_to_render][VIDEO_RENDER_STICK_POS_X2/8/2];
+        buf_w =  (uint8_t *)&video_line.buffer[WHITE][page_to_fill][VIDEO_RENDER_STICK_POS_X2/8/2];
         buf_w += 1 +  ((VIDEO_RENDER_STICK_POS_X2/8) & 1);
 
         for (uint8_t i=VIDEO_RENDER_STICK_POS_X/8; i<((VIDEO_RENDER_STICK_POS_X + VIDEO_RENDER_STICK_SIZE_X)/8); i++){
@@ -99,13 +97,13 @@ void video_render_overlay_sticks(uint16_t visible_line) {
 
     } else if (py == video_stick_data[2]) {
             // y value matches, render point at valid x pos
-            uint8_t *buf_w = (uint8_t *)&video_line.buffer[WHITE][page_to_render][0];
+            uint8_t *buf_w = (uint8_t *)&video_line.buffer[WHITE][page_to_fill][0];
             // add valid point
             uint8_t xr = VIDEO_RENDER_STICK_POS_X/8 + video_stick_data[3]/8;
             uint8_t xm = video_stick_data[3] & 0x07;  // = %8
             uint32_t v32w = 0b110110000000000000 >> xm;
             //uint32_t v32b = 0b001000000000000000 >> xm;
-            buf_w = (uint8_t *)&video_line.buffer[WHITE][page_to_render][0];
+            buf_w = (uint8_t *)&video_line.buffer[WHITE][page_to_fill][0];
             buf_w += xr + 1 - 1;
 
             *buf_w++ |= (v32w >> 16) & 0xFF;
@@ -118,7 +116,7 @@ void video_render_overlay_sticks(uint16_t visible_line) {
             uint8_t xm = video_stick_data[3] & 0x07;  // = %8
             uint32_t v32w = 0b00000011100000000000000 >> xm;
 
-            uint8_t *buf_w = (uint8_t *)&video_line.buffer[WHITE][page_to_render][0];
+            uint8_t *buf_w = (uint8_t *)&video_line.buffer[WHITE][page_to_fill][0];
             buf_w += xr + 1 - 1;
 
             *buf_w++ |= (v32w >> 16) & 0xFF;
@@ -126,13 +124,13 @@ void video_render_overlay_sticks(uint16_t visible_line) {
             *buf_w++ |= v32w & 0xFF;
     } else if (py == video_stick_data[1]) {
         // y value matches, render point at valid x pos
-        uint8_t *buf_w = (uint8_t *)&video_line.buffer[WHITE][page_to_render][0];
+        uint8_t *buf_w = (uint8_t *)&video_line.buffer[WHITE][page_to_fill][0];
         // add valid point
         uint8_t xr = VIDEO_RENDER_STICK_POS_X2/8 + video_stick_data[0]/8;
         uint8_t xm = video_stick_data[0] & 0x07;  // = %8
         uint32_t v32w = 0b110110000000000000 >> xm;
         //uint32_t v32b = 0b001000000000000000 >> xm;
-        buf_w = (uint8_t *)&video_line.buffer[WHITE][page_to_render][0];
+        buf_w = (uint8_t *)&video_line.buffer[WHITE][page_to_fill][0];
         buf_w += xr + 1 - 1;
 
         *buf_w++ |= (v32w >> 16) & 0xFF;
@@ -145,7 +143,7 @@ void video_render_overlay_sticks(uint16_t visible_line) {
             uint8_t xm = video_stick_data[0] & 0x07;  // = %8
             uint32_t v32w = 0b00000011100000000000000 >> xm;
 
-            uint8_t *buf_w = (uint8_t *)&video_line.buffer[WHITE][page_to_render][0];
+            uint8_t *buf_w = (uint8_t *)&video_line.buffer[WHITE][page_to_fill][0];
             buf_w += xr + 1 - 1;
 
             *buf_w++ |= (v32w >> 16) & 0xFF;
@@ -154,8 +152,8 @@ void video_render_overlay_sticks(uint16_t visible_line) {
     }
 
     // add border
-    uint8_t *buf_w = (uint8_t *)&video_line.buffer[WHITE][page_to_render][VIDEO_RENDER_STICK_POS_X/8/2];
-    //uint8_t *buf_b = (uint8_t *)&video_line.buffer[BLACK][page_to_render][VIDEO_RENDER_STICK_POS_X/8/2];
+    uint8_t *buf_w = (uint8_t *)&video_line.buffer[WHITE][page_to_fill][VIDEO_RENDER_STICK_POS_X/8/2];
+    //uint8_t *buf_b = (uint8_t *)&video_line.buffer[BLACK][page_to_fill][VIDEO_RENDER_STICK_POS_X/8/2];
 
     // white is shiftet 1 byte
     // plus shift for non 16bit aligned start positions:
@@ -171,7 +169,7 @@ void video_render_overlay_sticks(uint16_t visible_line) {
     *buf_w = (*buf_w) | 0x01;
     //*buf_b = (*buf_b) | 0x01;
 
-    buf_w =  (uint8_t *)&video_line.buffer[WHITE][page_to_render][VIDEO_RENDER_STICK_POS_X2/8/2];
+    buf_w =  (uint8_t *)&video_line.buffer[WHITE][page_to_fill][VIDEO_RENDER_STICK_POS_X2/8/2];
     buf_w += 1 +  ((VIDEO_RENDER_STICK_POS_X2/8) & 1);
 
     // render border
@@ -189,8 +187,8 @@ void video_render_overlay_sticks(uint16_t visible_line) {
     py = py - (uint16_t)video_stick_buffer_offset;
     if (py < 8) {
         // overlay stick pos
-        uint8_t *buf_w = (uint8_t *)&video_line.buffer[WHITE][page_to_render][VIDEO_RENDER_STICK_POS_X/8/2];
-        uint8_t *buf_b = (uint8_t *)&video_line.buffer[BLACK][page_to_render][VIDEO_RENDER_STICK_POS_X/8/2];
+        uint8_t *buf_w = (uint8_t *)&video_line.buffer[WHITE][page_to_fill][VIDEO_RENDER_STICK_POS_X/8/2];
+        uint8_t *buf_b = (uint8_t *)&video_line.buffer[BLACK][page_to_fill][VIDEO_RENDER_STICK_POS_X/8/2];
 
         // white is shiftet 1 byte
         buf_w++;
@@ -206,13 +204,13 @@ void video_render_overlay_sticks(uint16_t visible_line) {
     */
 }
 
-void video_render_sticks(uint16_t visible_line) {
-    uint16_t page_to_render = video_line.fill_request;
-
+#if 0
+void video_render_sticks(uint8_t page_to_fill, uint16_t visible_line) {
     uint16_t py = visible_line - VIDEO_START_LINE_STICKS;
+
     // start with empty buffer
-    VIDEO_CLEAR_BUFFER(BLACK, page_to_render);
-    VIDEO_CLEAR_BUFFER(WHITE, page_to_render);
+    VIDEO_CLEAR_BUFFER(BLACK, page_to_fill);
+    VIDEO_CLEAR_BUFFER(WHITE, page_to_fill);
 
     if (py > VIDEO_RENDER_STICK_SIZE){
         // outside active region, send empty line
@@ -222,8 +220,8 @@ void video_render_sticks(uint16_t visible_line) {
     // render left stick
     if ((py == 0) || (py == VIDEO_RENDER_STICK_SIZE-1)) {
         // render top and bottom of stick rect
-        uint8_t *buf_w = (uint8_t *)&video_line.buffer[WHITE][page_to_render][0];
-        uint8_t *buf_b = (uint8_t *)&video_line.buffer[BLACK][page_to_render][0];
+        uint8_t *buf_w = (uint8_t *)&video_line.buffer[WHITE][page_to_fill][0];
+        uint8_t *buf_b = (uint8_t *)&video_line.buffer[BLACK][page_to_fill][0];
 
         // white is shiftet 1 byte
         buf_w += VIDEO_RENDER_STICK_POS_X/8 + 1;
@@ -239,7 +237,7 @@ void video_render_sticks(uint16_t visible_line) {
         uint8_t xm = video_stick_data[3] & 0x07;  // = %8
         uint32_t v32w = 0b00000011100000000000000 >> xm;
 
-        uint8_t *buf_w = (uint8_t *)&video_line.buffer[WHITE][page_to_render][0];
+        uint8_t *buf_w = (uint8_t *)&video_line.buffer[WHITE][page_to_fill][0];
         buf_w += xr + 1 - 1;
 
         *buf_w++ = (v32w >> 16) & 0xFF;
@@ -247,7 +245,7 @@ void video_render_sticks(uint16_t visible_line) {
         *buf_w++ = v32w & 0xFF;
 
         // add border
-        buf_w = (uint8_t *)&video_line.buffer[WHITE][page_to_render][0];
+        buf_w = (uint8_t *)&video_line.buffer[WHITE][page_to_fill][0];
         buf_w += VIDEO_RENDER_STICK_POS_X/8 + 1;
         *buf_w = (*buf_w) | 0x80;
         buf_w += VIDEO_RENDER_STICK_SIZE/8 - 1;
@@ -257,7 +255,7 @@ void video_render_sticks(uint16_t visible_line) {
 
     } else if (py == video_stick_data[2]) {
         // y value matches, render point at valid x pos
-        uint8_t *buf_w = (uint8_t *)&video_line.buffer[WHITE][page_to_render][0];
+        uint8_t *buf_w = (uint8_t *)&video_line.buffer[WHITE][page_to_fill][0];
         buf_w += VIDEO_RENDER_STICK_POS_X/8 + 1;
         *buf_w = (*buf_w) | 0x80;
         buf_w += VIDEO_RENDER_STICK_SIZE/8 - 1;
@@ -270,7 +268,7 @@ void video_render_sticks(uint16_t visible_line) {
         uint8_t xm = video_stick_data[3] & 0x07;  // = %8
         uint32_t v32w = 0b110110000000000000 >> xm;
         //uint32_t v32b = 0b001000000000000000 >> xm;
-        buf_w = (uint8_t *)&video_line.buffer[WHITE][page_to_render][0];
+        buf_w = (uint8_t *)&video_line.buffer[WHITE][page_to_fill][0];
         buf_w += xr + 1 - 1;
 
         *buf_w++ = (v32w >> 16) & 0xFF;
@@ -294,7 +292,7 @@ void video_render_sticks(uint16_t visible_line) {
     } else {
         // render border only
         // y value matches, render point at valid x pos
-        uint8_t *buf_w = (uint8_t *)&video_line.buffer[WHITE][page_to_render][0];
+        uint8_t *buf_w = (uint8_t *)&video_line.buffer[WHITE][page_to_fill][0];
         buf_w += VIDEO_RENDER_STICK_POS_X/8 + 1;
         *buf_w = (*buf_w) | 0x80;
         buf_w += VIDEO_RENDER_STICK_SIZE/8 - 1;
@@ -302,11 +300,9 @@ void video_render_sticks(uint16_t visible_line) {
     }
 
 }
+#endif
 
-void video_render_pilot_logo(uint16_t visible_line) {
-    // render pilot logo!
-    uint8_t page_to_fill = video_line.fill_request;
-
+void video_render_pilot_logo(uint8_t page_to_fill, uint16_t visible_line) {
     // calc current row (overflows if visible_line < logo start -> big integer)
     uint16_t row = visible_line - VIDEO_START_PILOT_LOGO_Y;
     if (row >= PILOTLOGO_HEIGHT) {
@@ -315,8 +311,9 @@ void video_render_pilot_logo(uint16_t visible_line) {
         // -> DO NOT render logo
     } else {
         // valid region -> render pilot logo
-        uint16_t *pilot_w_ptr =  (uint16_t*)&pilotlogo_data16[WHITE][row];
-        uint16_t *pilot_b_ptr =  (uint16_t*)&pilotlogo_data16[BLACK][row];
+        uint16_t offset = row * 11;
+        uint16_t *pilot_w_ptr =  (uint16_t*)&pilotlogo_data16[WHITE][offset];
+        uint16_t *pilot_b_ptr =  (uint16_t*)&pilotlogo_data16[BLACK][offset];
         uint16_t *video_buffer_w_ptr = (uint16_t *)&video_line.buffer[WHITE][page_to_fill][0];
         uint16_t *video_buffer_b_ptr = (uint16_t *)&video_line.buffer[BLACK][page_to_fill][0];
 
@@ -328,7 +325,7 @@ void video_render_pilot_logo(uint16_t visible_line) {
     }
 }
 
-void video_render_text(uint16_t visible_line) {
+void video_render_text(uint8_t page_to_fill, uint16_t visible_line) {
     if (VIDEO_DEBUG_DURATION_TEXTLINE) led_on();
 
     // even and odd lines render the same data in text mode:
@@ -340,23 +337,18 @@ void video_render_text(uint16_t visible_line) {
     if (text_row < VIDEO_CHAR_BUFFER_HEIGHT){
         // render text
         // run code from ram, faster as there are no waitstates
-        video_render_text_row(text_row, font_row);
+        video_render_text_row(page_to_fill, text_row, font_row);
     } else {
         // text row is bigger than visible frame, send empty line
-        VIDEO_CLEAR_BUFFER(BLACK, video_line.fill_request);
-        VIDEO_CLEAR_BUFFER(WHITE, video_line.fill_request);
+        VIDEO_CLEAR_BUFFER(BLACK, page_to_fill);
+        VIDEO_CLEAR_BUFFER(WHITE, page_to_fill);
     }
 
     if (VIDEO_DEBUG_DURATION_TEXTLINE) led_off();
 }
 
 
-RUN_FROM_RAM static void video_render_text_row(uint8_t text_row, uint8_t font_row) {
-
-    #if 1
-
-    uint8_t page_to_fill = video_line.fill_request;
-
+RUN_FROM_RAM static void video_render_text_row(uint8_t page_to_fill, uint8_t text_row, uint8_t font_row) {
     uint8_t *video_buffer_ptr[2];
     video_buffer_ptr[WHITE] = (uint8_t*) &video_line.buffer[WHITE][page_to_fill][0];
     video_buffer_ptr[BLACK] = (uint8_t*) &video_line.buffer[BLACK][page_to_fill][0];
@@ -372,59 +364,26 @@ RUN_FROM_RAM static void video_render_text_row(uint8_t text_row, uint8_t font_ro
 
 
     for (uint32_t text_col = 0; text_col < VIDEO_CHAR_BUFFER_WIDTH; text_col++) {
-        //use manual loop unrolling here, subtract char ptr and add etc
+        uint32_t index = *char_ptr++; //video_char_buffer[text_row][text_col]; //(*char_ptr++);
 
-            uint32_t index = *char_ptr++; //video_char_buffer[text_row][text_col]; //(*char_ptr++);
+        // fetch ptr to font data
+        uint8_t *font_ptr = font_ptr_row + index*2;
 
-            // fetch ptr to font data
-            //uint16_t index = video_char_buffer[text_row][text_col]*3;
-            uint8_t *font_ptr = font_ptr_row + index*2;
+        *video_buffer_ptr[WHITE]++ = *font_ptr++;
+        *video_buffer_ptr[WHITE]++ = *font_ptr++;
 
-            *video_buffer_ptr[WHITE]++ = *font_ptr++;
-            *video_buffer_ptr[WHITE]++ = *font_ptr++;
+        // get black font data:
+        //font_ptr += sizeof(font_data[0])-2; //(uint8_t*)&font_data[1][font_row][index*2];
 
-            // get black font data:
-            //font_ptr += sizeof(font_data[0])-2; //(uint8_t*)&font_data[1][font_row][index*2];
-
-            uint16_t *fp16 = font_ptr_row16 + index;
-            *b16++ = *fp16;
-        }
-    #else
-    // fill white buffer
-    uint8_t *line_buf_ptr = (uint8_t*) video_line_buffer.white_write_ptr;
-
-    // white data has to be shifted one byte with the first byte cleared
-    *line_buf_ptr++ = 0x00;
-
-    // fetch text ptr
-    uint8_t *char_ptr;
-    uint8_t *font_ptr_head = (uint8_t*)&font_data[0][font_row][0];
-    uint8_t *font_ptr; // = (uint8_t*)&font_data[0][font_row][0];
-
-    // black: we can use 16bit aligned copy here
-    uint16_t *font_ptr16;
-    uint16_t *font_ptr_head16 = (uint16_t*)&font_data[1][font_row][0];
-    uint16_t *line_buf_ptr16 = (uint16_t*) video_line_buffer.black_write_ptr;
-
-    // white: process all chars (loop unrolled!):
-    char_ptr = &video_char_buffer[text_row][0];
-    UNROLL_LOOP(VIDEO_CHAR_BUFFER_WIDTH, {\
-        font_ptr        = font_ptr_head + 2*(*char_ptr);\
-        *line_buf_ptr++ = *font_ptr++;\
-        *line_buf_ptr++ = *font_ptr;\
-
-        font_ptr16        = font_ptr_head16 + *char_ptr++;\
-        *line_buf_ptr16++ = *font_ptr16++;\
-    });
-
-    #endif
+        uint16_t *fp16 = font_ptr_row16 + index;
+        *b16++ = *fp16;
+    }
 }
 
 static uint32_t video_render_ani_count;
-//static uint32_t video_render_ani_dir;
 
 // this renders in ~23.2us (~64us available)
-void video_render_animation(uint16_t visible_line) {
+void video_render_animation(uint8_t page_to_fill, uint16_t visible_line) {
     if (VIDEO_DEBUG_DURATION_ANIMATION) led_on();
 
     //uint32_t data = 0;
@@ -477,7 +436,7 @@ void video_render_animation(uint16_t visible_line) {
         // black and white:
         for(uint8_t color = 0; color < 2; color++){
             // fetch source and dest ptr
-            video_buffer_ptr = (uint16_t*) &video_line.buffer[color][video_line.fill_request][0];
+            video_buffer_ptr = (uint16_t*) &video_line.buffer[color][page_to_fill][0];
             logo_ptr         = (uint16_t*)&logo_data16[color][logo_offset/2];
 
             uint16_t halfwords_todo = LOGO_WIDTH/8/2;
@@ -487,8 +446,8 @@ void video_render_animation(uint16_t visible_line) {
         }
     }else{
         // no image data region
-        VIDEO_CLEAR_BUFFER(BLACK, video_line.fill_request);
-        VIDEO_CLEAR_BUFFER(WHITE, video_line.fill_request);
+        VIDEO_CLEAR_BUFFER(BLACK, page_to_fill);
+        VIDEO_CLEAR_BUFFER(WHITE, page_to_fill);
     }
     if (VIDEO_DEBUG_DURATION_ANIMATION) led_off();
 }

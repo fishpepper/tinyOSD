@@ -26,11 +26,11 @@
 
 
 void video_render_init(void);
-void video_render_animation(uint16_t visible_line);
-void video_render_text(uint16_t visible_line);
-void video_render_sticks(uint16_t visible_line);
-void video_render_pilot_logo(uint16_t  visible_line);
-void video_render_overlay_sticks(uint16_t visible_line);
+void video_render_animation(uint8_t page_to_fill, uint16_t visible_line);
+void video_render_text(uint8_t page_to_fill, uint16_t visible_line);
+void video_render_sticks(uint8_t page_to_fill, uint16_t visible_line);
+void video_render_pilot_logo(uint8_t page_to_fill, uint16_t  visible_line);
+void video_render_overlay_sticks(uint8_t page_to_fill, uint16_t visible_line);
 
 
 

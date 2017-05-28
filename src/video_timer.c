@@ -37,14 +37,13 @@
 
 static void video_timer_init_tim1(void);
 static void video_timer_init_comparator(void);
-static void video_timer_init_comparator_interrupt(void);
 
 static volatile uint16_t video_sync_last_compare_value;
 
 void video_timer_init(void) {
     video_timer_init_tim1();
     video_timer_init_comparator();
-    video_timer_init_comparator_interrupt();
+    //video_timer_init_comparator_interrupt();
 }
 
 static void video_timer_init_tim1(void) {
@@ -139,7 +138,7 @@ static void video_timer_init_comparator(void) {
     comp_enable(COMP1);
 }
 
-static void video_timer_init_comparator_interrupt(void) {
+void video_timer_init_interrupt(void) {
     debug_function_call();
 
     // set up exti source
@@ -150,8 +149,6 @@ static void video_timer_init_comparator_interrupt(void) {
     nvic_enable_irq(VIDEO_COMP_EXTI_IRQN);
     nvic_set_priority(VIDEO_COMP_EXTI_IRQN, NVIC_PRIO_COMPARATOR);
 }
-
-
 
 void ADC_COMP_IRQHandler(void) {
     // well, this irq is only called on comp interrupts -> skip checking...

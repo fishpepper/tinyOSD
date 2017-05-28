@@ -23,5 +23,6 @@
 #include <stdint.h>
 
 void video_io_init(void);
+void video_io_set_dac_value_mv(uint16_t target);
 
 #endif  // VIDEO_IO_H_

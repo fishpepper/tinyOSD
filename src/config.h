@@ -1,24 +1,43 @@
-#define USE_EVALBOARD 1
+#define CAMOSD_RUNCAM 0
+#define CAMOSD_VM275  1
+#define EVALBOARD     2
 
-#if USE_EVALBOARD
-// eval board
-#define LED_GPIO GPIOC
-#define LED_PIN  GPIO8
-#define VIDEO_BSYNC_VOLTAGE_MV 100
-#define VIDEO_DAC_VCC       3.0
+
+//#define BOARD CAMOSD_VM275
+#define BOARD EVALBOARD
+
+#if (BOARD == CAMOSD_VM275)
+    // vm275
+    #define LED_GPIO GPIOA
+    #define LED_PIN  GPIO5
+    #define VIDEO_BSYNC_VOLTAGE_MV 100
+    #define VIDEO_DAC_VCC       1.8
+#elif (BOARD == CAMOSD_RUNCAM)
+    // camOSD runcam
+    #define LED_GPIO GPIOA
+    #define LED_PIN  GPIO5
+    #define VIDEO_BSYNC_VOLTAGE_MV 210
+    #define VIDEO_DAC_VCC       1.8
 #else
-// camOSD
-#define LED_GPIO GPIOA
-#define LED_PIN  GPIO5
-#define VIDEO_BSYNC_VOLTAGE_MV 210
-#define VIDEO_DAC_VCC       1.8
+    // eval board
+    #define LED_GPIO GPIOC
+    #define LED_PIN  GPIO8
+    #define VIDEO_BSYNC_VOLTAGE_MV 100
+    #define VIDEO_DAC_VCC       3.0
 #endif
 
-#define DEBUG_GPIO      GPIOA
+/*#define DEBUG_GPIO      GPIOA
 #define DEBUG_GPIO_AF   GPIO_AF1
 #define DEBUG_UART      USART2
 #define DEBUG_UART_RCC  RCC_USART2
 #define DEBUG_TX_PIN    GPIO14
+#define DEBUG_UART_BAUDRATE 115200*/
+
+#define DEBUG_GPIO      GPIOA
+#define DEBUG_GPIO_AF   GPIO_AF1
+#define DEBUG_UART      USART1
+#define DEBUG_UART_RCC  RCC_USART1
+#define DEBUG_TX_PIN    GPIO9
 #define DEBUG_UART_BAUDRATE 115200
 
 #define SERIAL_GPIO      GPIOA

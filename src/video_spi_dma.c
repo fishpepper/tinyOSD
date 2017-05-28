@@ -32,6 +32,7 @@
 #include <libopencm3/cm3/nvic.h>
 #include <libopencmsis/core_cm3.h>
 
+
 static volatile uint32_t video_spi_dma_cr_trigger[2];
 
 static void video_spi_dma_init_spi(uint32_t spi);

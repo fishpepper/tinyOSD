@@ -29,14 +29,12 @@
 static void video_io_init_rcc(void);
 static void video_io_init_gpio(void);
 static void video_io_init_dac(void);
-static void video_io_set_dac_value_mv(uint16_t target);
 static void video_io_set_dac_value_raw(uint16_t taregt);
 
 void video_io_init(void) {
     video_io_init_rcc();
     video_io_init_gpio();
     video_io_init_dac();
-    video_io_set_dac_value_mv(VIDEO_BSYNC_VOLTAGE_MV);
 }
 
 
@@ -114,8 +112,8 @@ static void video_io_init_dac(void) {
 
 
 // set dac to a given voltage level
-static void video_io_set_dac_value_mv(uint16_t target) {
-    debug_function_call_fixed1p3(target);
+void video_io_set_dac_value_mv(uint16_t target) {
+    //debug_function_call_fixed1p3(target);
 
     uint32_t tmp = target;
     tmp = (tmp * 0x0FFF) / (VIDEO_DAC_VCC * 1000);
@@ -123,7 +121,7 @@ static void video_io_set_dac_value_mv(uint16_t target) {
 }
 
 static void video_io_set_dac_value_raw(uint16_t target) {
-    debug_function_call_h32(target);
+    //debug_function_call_h32(target);
 
     dac_load_data_buffer_single(target, RIGHT12, CHANNEL_1);
     dac_software_trigger(CHANNEL_1);

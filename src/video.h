@@ -20,9 +20,12 @@
 #ifndef VIDEO_H_
 #define VIDEO_H_
 
-#define VIDEO_DEBUG_DMA 1
+#define VIDEO_DEBUG_ODD_EVEN 1
+#define VIDEO_DEBUG_DMA 0
 #define VIDEO_DEBUG_DURATION_TEXTLINE 0
 #define VIDEO_DEBUG_DURATION_ANIMATION 0
+
+#define VIDEO_RENDER_DEBUG_DATA 1
 
 #define VIDEO_BUFFER_WIDTH (2*38) //66 // max should be ~68
 #define VIDEO_CHAR_BUFFER_WIDTH  35  // THIS SHALL NEVER EXCEED VIDEO_BUFFER_WIDTH/2-3 !
@@ -42,17 +45,23 @@
 #define VIDEO_RENDER_STICK_SIZE_Y    128
 #define VIDEO_RENDER_STICK_POS_X   (3*8)
 #define VIDEO_RENDER_STICK_POS_X2   (576 - VIDEO_RENDER_STICK_POS_X - VIDEO_RENDER_STICK_SIZE_X)
-#define VIDEO_START_LINE_STICKS   (8*35)
+#define VIDEO_START_LINE_STICKS    (7*35)
 #define VIDEO_END_LINE_STICKS  (VIDEO_START_LINE_STICKS + VIDEO_RENDER_STICK_SIZE)
 
 void video_init(void);
 void video_main_loop(void);
 
 
+#define VIDEO_BLANK_LEVEL_DETECTION_MAX_MV 300
+
 #define VIDEO_BUFFER_FILL_REQUEST_IDLE 3
 
 #define WHITE 0
 #define BLACK 1
+
+
+#define VIDEO_MODE_PAL 0
+#define VIDEO_MODE_NTSC 1
 
 //NTSC
 #define VIDEO_FIRST_ACTIVE_LINE 40
@@ -61,6 +70,7 @@ void video_main_loop(void);
 
 extern uint8_t video_char_buffer[VIDEO_CHAR_BUFFER_HEIGHT][VIDEO_CHAR_BUFFER_WIDTH];
 extern uint16_t video_char_buffer_write_ptr;
+extern uint8_t video_mode;
 
 #define VIDEO_CLEAR_BUFFER(__col, __idx) { memset((void *)&video_line.buffer[__col][__idx][0], 0, (VIDEO_BUFFER_WIDTH/2)*2); }
 #define VIDEO_SET_BUFFER(__col, __idx) { memset((void *)&video_line.buffer[__col][__idx][0], 0xFFFF, (VIDEO_BUFFER_WIDTH/2)*2); }
