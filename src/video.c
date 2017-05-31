@@ -85,11 +85,7 @@ void video_init(void) {
     video_timer_init();
 
     // detect blank voltage level
-    //video_detect_blank_level();
-
-
-
-    video_io_set_dac_value_mv(100);
+    video_detect_blank_level();
 
     // enable interrupt routine
     video_timer_init_interrupt();
@@ -128,8 +124,8 @@ static void video_detect_pal_ntsc(void) {
 static void video_detect_blank_level(void) {
     debug_function_call();
 
-    //debug("video: waiting 500ms\n");
-    //timeout_delay_ms(500);
+    debug("video: waiting 500ms for cam to be ready\n");
+    timeout_delay_ms(500);
 
     // first: find blank level. start with 0mV and search up to 300mV
     // this should not take too long, let's do this within < 500ms
