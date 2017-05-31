@@ -23,6 +23,7 @@
 #include "config.h"
 #include "macros.h"
 #include "debug.h"
+#include "led.h"
 
 #include <libopencm3/stm32/dac.h>
 #include <libopencm3/stm32/spi.h>
@@ -256,11 +257,6 @@ void DMA1_CHANNEL4_5_IRQHandler(void) {
 
     // prepare to send tx trigger
     DMA_SET_NUMBER_OF_DATA(VIDEO_DMA_BLACK, DMA_CHANNEL4, 1);
-
-
-    // prepare next page rendering:
-    video_line.currently_rendering = 1 - video_line.currently_rendering;
-    video_line.fill_request        = video_line.currently_rendering;
 
     // prepare to send dma spi data
     DMA_SET_MEMORY_ADDRES_NOCHECK(VIDEO_DMA_BLACK, DMA_CHANNEL5,

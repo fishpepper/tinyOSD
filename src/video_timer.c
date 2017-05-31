@@ -201,7 +201,11 @@ void ADC_COMP_IRQHandler(void) {
 
             if (VIDEO_DEBUG_DMA) led_on();
 
-            TIMER_ENABLE_IRQ(TIM1, TIM_DIER_CC1DE | TIM_DIER_CC4DE | TIM_DIER_CC4IE);
+            // prepare next page rendering:
+            video_line.currently_rendering = 1 - video_line.currently_rendering;
+            video_line.fill_request        = video_line.currently_rendering;
+
+            TIMER_ENABLE_IRQ(TIM1, TIM_DIER_CC1DE | TIM_DIER_CC4DE);
 
             if (VIDEO_DEBUG_DMA) TIMER_ENABLE_IRQ(TIM1, TIM_DIER_CC4IE);
 

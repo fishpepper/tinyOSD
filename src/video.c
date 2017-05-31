@@ -85,7 +85,11 @@ void video_init(void) {
     video_timer_init();
 
     // detect blank voltage level
-    video_detect_blank_level();
+    //video_detect_blank_level();
+
+
+
+    video_io_set_dac_value_mv(100);
 
     // enable interrupt routine
     video_timer_init_interrupt();
@@ -100,6 +104,8 @@ void video_init(void) {
 }
 
 static void video_detect_pal_ntsc(void) {
+    debug_function_call();
+
     // detect ntsc/pal based on the number of lines
     // timeout >2 pal or nts frames
     uint16_t max_line = 0;
@@ -120,15 +126,22 @@ static void video_detect_pal_ntsc(void) {
 }
 
 static void video_detect_blank_level(void) {
+    debug_function_call();
+
+    //debug("video: waiting 500ms\n");
+    //timeout_delay_ms(500);
+
     // first: find blank level. start with 0mV and search up to 300mV
     // this should not take too long, let's do this within < 500ms
     // -> use 10 frames
     // -> more than 4800 lines
-    uint16_t blank_mv_best = 0;
+    uint16_t sync_level = 0;
+    uint16_t min_level  = 0;
 
-    for(uint16_t blank_mv = 0; blank_mv < VIDEO_BLANK_LEVEL_DETECTION_MAX_MV; blank_mv += 5) {
+    for(uint16_t mv = 0; mv < VIDEO_BLANK_LEVEL_DETECTION_MAX_MV; mv += 5) {
+        debug("set_mv\n"); debug_flush();
         // set voltage
-        video_io_set_dac_value_mv(blank_mv);
+        video_io_set_dac_value_mv(mv);
 
         // try to count roughly 100 lines
         // pal: 15625  lines per second = ~6.4ms per 100 lines
@@ -139,17 +152,32 @@ static void video_detect_blank_level(void) {
             // count edges
             if (COMP_CSR(COMP1) & (1<<14)) {
                 // rising edge
-                while (COMP_CSR(COMP1) & (1<<14)) {}
+                while ((COMP_CSR(COMP1) & (1<<14)) && !(timeout_timed_out())) {
+                    // wait for falling edge (or timeout)
+                }
                 line_counter++;
             }
         }
 
-        if ((blank_mv_best == 0) && (line_counter > 150)) {
-            blank_mv_best = blank_mv * 0.4;
+        // try to find min level:
+        if ((min_level == 0) && (line_counter > 30)) {
+            // take this as min level
+            min_level = mv;
+        } else if (line_counter > 120) {
+            // this exceeds the expected linecount, looks like color burst
+            sync_level = min_level + 0.4*(mv - min_level);
+            break;
         }
-        //debug("tc "); debug_put_uint16(blank_mv); debug("="); debug_put_uint16(line_counter);debug_put_newline();
+        //debug("tc "); debug_put_uint16(mv); debug("="); debug_put_uint16(line_counter);debug_put_newline();
     }
-    video_io_set_dac_value_mv(blank_mv_best);
+    debug("video: sync level = "); debug_put_uint16(sync_level); debug_put_newline();
+
+    if (sync_level == 0) {
+        // bad detection -> fallback
+        sync_level = 100;
+    }
+
+    video_io_set_dac_value_mv(sync_level);
 }
 
 void video_render_blank(uint16_t line) {
