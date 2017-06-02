@@ -67,6 +67,13 @@ static void video_timer_init_tim1(void) {
                    TIM_CR1_CMS_EDGE,
                    TIM_CR1_DIR_UP);
 
+    // enable master mode TRGO = CH3 OC (used as adc trigger)
+    timer_set_master_mode(TIM1, TIM_CR2_MMS_COMPARE_OC3REF);
+    //OC3REF is set on compare match
+    timer_set_oc_mode(TIM1, TIM_OC3, TIM_OCM_PWM2);
+
+
+
     // input compare trigger
     // on channel IC2
     timer_ic_set_input(TIM1, TIM_IC2, TIM_IC_IN_TI1);
@@ -78,8 +85,6 @@ static void video_timer_init_tim1(void) {
     // set CC2 as output to internals
     //timer_ic_set_input(TIM1, TIM_IC2, TIM_CCMR1_CC2S_OUT);
 
-    //OC2REF is set on compare match
-    //timer_set_oc_mode(TIM1, TIM_OC2, TIM_OCM_PWM2);
 
     // set up oc2 interrupt
     nvic_set_priority(NVIC_TIM1_CC_IRQ, NVIC_PRIO_TIMER1);
@@ -87,6 +92,7 @@ static void video_timer_init_tim1(void) {
 
     timer_set_dma_on_compare_event(TIM1);
     timer_disable_oc_preload(TIM1, TIM_OC1);
+    timer_disable_oc_preload(TIM1, TIM_OC3);
     timer_disable_oc_preload(TIM1, TIM_OC4);
 
     // line frequency
@@ -199,6 +205,9 @@ void ADC_COMP_IRQHandler(void) {
             TIM_CCR1(TIM1) = current_compare_value;
             TIM_CCR4(TIM1) = current_compare_value + 2*16; // correct for offset by different dma access time
 
+            // let the adc sample the middle of each line:
+            TIM_CCR3(TIM1) = current_compare_value + _US_TO_CLOCKS(19);
+
             if (VIDEO_DEBUG_DMA) led_on();
 
             // prepare next page rendering:
@@ -208,6 +217,8 @@ void ADC_COMP_IRQHandler(void) {
             TIMER_ENABLE_IRQ(TIM1, TIM_DIER_CC1DE | TIM_DIER_CC4DE);
 
             if (VIDEO_DEBUG_DMA) TIMER_ENABLE_IRQ(TIM1, TIM_DIER_CC4IE);
+
+            //TIMER_ENABLE_IRQ(TIM1, TIM_DIER_CC3IE);
 
             // enable dma channel, this was set up during the dma end of tx int
             DMA_ENABLE_CHANNEL(VIDEO_DMA_WHITE, DMA_CHANNEL2);
@@ -238,5 +249,10 @@ void TIM1_CC_IRQHandler(void) {
         if (VIDEO_DEBUG_DMA) led_toggle();
         if (VIDEO_DEBUG_DMA) led_toggle();
     }
+    /*if (TIMER_GET_FLAG(TIM1, TIM_SR_CC3IF)) {
+        TIMER_CLEAR_FLAG(TIM1, TIM_SR_CC3IF);
+        led_toggle();
+        led_toggle();
+    }*/
 }
 

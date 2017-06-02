@@ -3,8 +3,8 @@
 #define EVALBOARD     2
 
 
-#define BOARD CAMOSD_VM275
-//#define BOARD EVALBOARD
+//#define BOARD CAMOSD_VM275
+#define BOARD EVALBOARD
 
 #if (BOARD == CAMOSD_VM275)
     // vm275
@@ -25,6 +25,12 @@
     #define VIDEO_BSYNC_VOLTAGE_MV 100
     #define VIDEO_DAC_VCC       3.0
 #endif
+
+
+#define VIDEO_ADC ADC1
+#define VIDEO_ADC_CHANNEL 1
+#define VIDEO_ADC_GPIO GPIOA
+#define VIDEO_ADC_PIN GPIO1
 
 /*#define DEBUG_GPIO      GPIOA
 #define DEBUG_GPIO_AF   GPIO_AF1

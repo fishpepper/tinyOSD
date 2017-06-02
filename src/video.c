@@ -215,8 +215,9 @@ void video_render_blank(uint16_t line) {
                 strcpy(&video_char_buffer[5+3][30], "PAL");
             }
             break;
-
 #endif
+        case(VIDEO_FIRST_ACTIVE_LINE-5):
+            break;
     }
 }
 
@@ -233,6 +234,7 @@ void video_main_loop(void) {
             led_set(video_line.active_line & 1);
             #endif
 
+
             page_to_fill = video_line.fill_request;
 
             // active or blank line?
@@ -243,10 +245,14 @@ void video_main_loop(void) {
                 //visible line -> render data
                 uint16_t visible_line = video_line.active_line - VIDEO_FIRST_ACTIVE_LINE;
 
-                if ( ((video_armed_state & (1<<3)) == 0) &&
+#if  VIDEO_RENDER_ADCVAL
+                if (0) {
+#else
+                if (((video_armed_state & (1<<3)) == 0) &&
                      (visible_line >= VIDEO_START_LINE_ANIMATION) &&
                      (visible_line <= VIDEO_END_LINE_ANIMATION)
                    ) {
+#endif
                     // never armed and inside ani window -> show animation
                     video_render_animation(page_to_fill, visible_line);
                 } else {
@@ -268,6 +274,42 @@ void video_main_loop(void) {
             video_line.buffer[WHITE][page_to_fill][VIDEO_BUFFER_WIDTH/2-2] = 0;
             video_line.buffer[WHITE][page_to_fill][VIDEO_BUFFER_WIDTH/2-1] = 0;
 
+
+#if VIDEO_RENDER_ADCVAL
+            // 0 ... 4095 -> / 16 = 0...255
+            static int16_t video_avg = 0;
+            static int32_t video_avg_frame_tmp = 0;
+            static int16_t video_avg_frame_cnt = 0;
+            static int16_t video_avg_frame = 1;
+            int16_t aval = adc_get_value();
+
+            if (video_line.active_line == VIDEO_FIRST_ACTIVE_LINE) {
+                video_avg_frame = video_avg_frame_tmp / video_avg_frame_cnt;
+                video_avg_frame_tmp = 0;
+                video_avg_frame_cnt = 0;
+            }
+            video_avg_frame_cnt++;
+
+            // low pass filter: y[i] := y[i-1] + alpha * (x[i] - y[i-1])
+            video_avg = video_avg  + (aval - video_avg)/2;
+            video_avg_frame_tmp += video_avg;
+
+            aval =  video_avg/ 8;
+
+            if (aval > 500) aval = 500;
+
+            uint16_t t = (1<<(15-(aval%16)));
+            video_line.buffer[WHITE][page_to_fill][aval/16] = (t<<8) | (t>>8);
+
+            aval = video_avg_frame / 8;
+            t = (1<<(15-(aval%16)));
+            video_line.buffer[WHITE][page_to_fill][aval/16] |= (t<<8) | (t>>8);
+
+            if (video_avg > video_avg_frame) {
+                video_line.buffer[WHITE][page_to_fill][VIDEO_BUFFER_WIDTH/2/2-1] |= 0x1800;
+                video_line.buffer[BLACK][page_to_fill][VIDEO_BUFFER_WIDTH/2/2-1] |= 0x00FF;
+            }
+#endif
 
             // if the frame was sent in between, increment unprocessed frame counter
             if (video_line.fill_request != page_to_fill) {

@@ -25,6 +25,7 @@
 #include "debug.h"
 #include "video.h"
 #include "serial.h"
+#include "adc.h"
 
 #include <stdlib.h>
 #include <libopencm3/cm3/nvic.h>
@@ -41,6 +42,8 @@ int main(void) {
     led_init();
 
     debug_init();
+
+    adc_init();
 
     video_init();
 
