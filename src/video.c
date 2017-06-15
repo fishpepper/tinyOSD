@@ -25,6 +25,7 @@
 #include "debug.h"
 #include "timeout.h"
 #include "led.h"
+#include "adc.h"
 #include "serial.h"
 
 #include <stdio.h>
@@ -135,7 +136,6 @@ static void video_detect_blank_level(void) {
     uint16_t min_level  = 0;
 
     for(uint16_t mv = 0; mv < VIDEO_BLANK_LEVEL_DETECTION_MAX_MV; mv += 5) {
-        debug("set_mv\n"); debug_flush();
         // set voltage
         video_io_set_dac_value_mv(mv);
 
@@ -146,9 +146,9 @@ static void video_detect_blank_level(void) {
         uint16_t line_counter = 0;
         while(!timeout_timed_out()) {
             // count edges
-            if (COMP_CSR(COMP1) & (1<<14)) {
+            if (COMP_CSR(VIDEO_COMP) & (COMP2_CSR_COMPOUT)) {
                 // rising edge
-                while ((COMP_CSR(COMP1) & (1<<14)) && !(timeout_timed_out())) {
+                while ((COMP_CSR(VIDEO_COMP) & (COMP2_CSR_COMPOUT)) && !(timeout_timed_out())) {
                     // wait for falling edge (or timeout)
                 }
                 line_counter++;
@@ -164,7 +164,7 @@ static void video_detect_blank_level(void) {
             sync_level = min_level + 0.4*(mv - min_level);
             break;
         }
-        //debug("tc "); debug_put_uint16(mv); debug("="); debug_put_uint16(line_counter);debug_put_newline();
+        debug("tc "); debug_put_uint16(mv); debug("="); debug_put_uint16(line_counter);debug_put_newline();
     }
     debug("video: sync level = "); debug_put_uint16(sync_level); debug_put_newline();
 
@@ -1146,24 +1146,24 @@ static void video_init_comparator(void) {
     debug_function_call();
 
     // start disabled
-    comp_disable(COMP1);
+    comp_disable(VIDEO_COMP);
 
     // set comparator inputs
     // inp = PA1
     // inm = DAC_OUT_1 (PA4) -> INM4
-    comp_select_input(COMP1, COMP_CSR_INSEL_INM4);
+    comp_select_input(VIDEO_COMP, COMP_CSR_INSEL_INM4);
 
     // IC2 output
-    comp_select_output(COMP1, COMP_CSR_OUTSEL_TIM1_IC1);
+    comp_select_output(VIDEO_COMP, COMP_CSR_OUTSEL_TIM1_IC1);
 
     // hysteresis
-    comp_select_hyst(COMP1, COMP_CSR_HYST_MED);
+    comp_select_hyst(VIDEO_COMP, COMP_CSR_HYST_MED);
 
     // speed --> FAST!
-    comp_select_speed(COMP1, COMP_CSR_SPEED_HIGH);
+    comp_select_speed(VIDEO_COMP, COMP_CSR_SPEED_HIGH);
 
     // enable
-    comp_enable(COMP1);
+    comp_enable(VIDEO_COMP);
 }
 
 static void video_init_timer(void) {
@@ -1261,7 +1261,7 @@ void ADC_COMP_IRQHandler(void) {
 
     // we trigger on both edges
     // check if this was rising or falling edge:
-    if (!(COMP_CSR(COMP1) & (1<<14))) {
+    if (!(COMP_CSR(VIDEO_COMP) & (COMP_CSR_COMPOUT))) {
         // falling edge -> this was measuring the field length
         if ((pulse_len > VIDEO_SYNC_VSYNC_MIN) && (pulse_len < VIDEO_SYNC_VSYNC_MAX)) {
             // this was the last half line -> hsync!

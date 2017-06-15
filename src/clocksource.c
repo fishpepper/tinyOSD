@@ -31,11 +31,10 @@ void clocksource_init(void) {
 }
 
 void clocksource_hse_in_8_out_48(void) {
-    // see
-    // https://www.mikrocontroller.net/attachment/322047/Clock_Control.png
-    // or RM00091 p. 98
+    // see RM0366 p. 92 for clock tree
 
     // enable internal high-speed oscillator
+    // we will run from hsi during setup
     rcc_osc_on(RCC_HSI);
     rcc_wait_for_osc_ready(RCC_HSI);
 
@@ -45,40 +44,38 @@ void clocksource_hse_in_8_out_48(void) {
     // Enable external high-speed oscillator 8MHz
     rcc_osc_on(RCC_HSE);
     rcc_wait_for_osc_ready(RCC_HSE);
-    rcc_set_sysclk_source(RCC_CFGR_SW_HSE);
 
-    // set prescalers for AHB, ADC, ABP1, ABP2.
-    // Do this before touching the PLL
-    rcc_set_hpre(RCC_CFGR_HPRE_NODIV);      // 48Mhz (max 48)
-    rcc_set_ppre(RCC_CFGR_PPRE_DIV2);       // 24Mhz (max 48)
+    // disable pll during setup (madatory!)
+    rcc_osc_off(RCC_PLL);
+    rcc_wait_for_osc_not_ready(RCC_PLL);
 
-    // sysclk runs with 48MHz -> 1 waitstates.
-    // * 0WS from 0-24MHz
-    // * 1WS from 24-48MHz
-    // * 2WS from 48-72MHz
-    flash_set_ws(FLASH_ACR_LATENCY_1WS);
+    // set up HSE 8MHz to PLL out 48 MHz
+    // PL OUT = HSE/2 * 12 = 4 * 12 = 48
+    rcc_set_prediv(RCC_CFGR2_PREDIV_DIV2);
+    rcc_set_pll_source(RCC_CFGR_PLLSRC_HSE_PREDIV);
+    rcc_set_pll_multiplier(RCC_CFGR_PLLMUL_PLL_IN_CLK_X12);
 
-    // set the PLL multiplication factor to 6
-    // pll source is hse
-    RCC_CFGR |= RCC_CFGR_PLLSRC;
-    // pll prediv = 1
-    rcc_set_prediv(RCC_CFGR2_PREDIV_NODIV);
-    // 8MHz (external) * 6 (multiplier) = 48MHz
-    rcc_set_pll_multiplication_factor(RCC_CFGR_PLLMUL_MUL6);
-
-    // enable PLL oscillator and wait for it to stabilize.
+    // start pll
     rcc_osc_on(RCC_PLL);
     rcc_wait_for_osc_ready(RCC_PLL);
 
-    // select PLL as SYSCLK source.
-    rcc_set_sysclk_source(RCC_PLL);
+    // set up prescalers for AHB, ADC, ABP1, ABP2.
+    // do this before setting sysclock source to PLL
+    // otherwise we might run the peripherals at a frequency
+    // that exceeds the limits
+    rcc_set_hpre(RCC_CFGR_HPRE_DIV_NONE);    // 48MHz (max: 72)
+    rcc_set_ppre2(RCC_CFGR_PPRE2_DIV_2);     // 24MHz (max: 72)
+    rcc_set_ppre1(RCC_CFGR_PPRE1_DIV_2);     // 24MHz (max: 36)
+
+    // set flash waitstates
+    flash_set_ws(FLASH_ACR_PRFTBE | FLASH_ACR_LATENCY_1WS);
+
+    // finally select PLL as SYSCLK source
+    rcc_set_sysclk_source(RCC_CFGR_SW_PLL);
 
     // set the peripheral clock frequencies used */
     rcc_ahb_frequency  = 48000000;
     rcc_apb1_frequency = 24000000;
-
-    // When PPRE is set to something != NODIV
-    // TIM input clock is apb clkspeed*2 (see RM00091 p98)
-    //rcc_timer_frequency = 2*rcc_apb1_frequency;
+    rcc_apb2_frequency = 24000000;
 }
 

@@ -32,6 +32,9 @@
 #include <libopencm3/cm3/systick.h>
 
 
+// STM32F301 reference manual DM00094350.pdf
+// http://www.st.com/resource/en/reference_manual/dm00094350.pdf
+
 int main(void) {
     // init crystal osc & set clock options
     clocksource_init();
@@ -51,5 +54,9 @@ int main(void) {
 
     // this will never exit...
     video_main_loop();
-}
 
+    while(1){
+        led_toggle();
+        timeout_delay_ms(100);
+    }
+}

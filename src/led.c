@@ -19,6 +19,7 @@
 
 #include "led.h"
 #include "macros.h"
+#include "delay.h"
 #include <libopencm3/stm32/rcc.h>
 
 void led_init(void) {
@@ -32,10 +33,9 @@ void led_init(void) {
     // some debug blinking
     for(uint8_t i=0; i<4; i++) {
         led_toggle();
-        timeout_delay_ms(200);
-        //for(uint8_t t=0; t<200; t++) {
-//            delay_us(1000);
-        //}
+        for(uint8_t t=0; t<200; t++) {
+            delay_us(1000);
+        }
     }
 
     led_on();

@@ -43,7 +43,7 @@ static void adc_init_rcc(void) {
     debug_function_call();
 
     // enable adc clock
-    rcc_periph_clock_enable(RCC_ADC);
+    rcc_periph_clock_enable(RCC_ADC12);
 
     // enable adc gpio clock
     rcc_periph_clock_enable(GPIO_RCC(VIDEO_ADC_GPIO));
@@ -52,7 +52,7 @@ static void adc_init_rcc(void) {
     adc_power_off(VIDEO_ADC);
 
     // ADC CLOCK = 48 / 4 = 12MHz
-    adc_set_clk_source(VIDEO_ADC, ADC_CLKSOURCE_PCLK_DIV4);
+    adc_set_clk_prescale(VIDEO_ADC, ADC_CCR_CKMODE_DIV4);
 
     // run calibration
     adc_calibrate(VIDEO_ADC);
@@ -83,29 +83,34 @@ uint16_t adc_get_value(void) {
 static void adc_init_mode(void) {
     debug_function_call();
 
+    // change settings while disabled
+    adc_power_off(VIDEO_ADC);
+
     // set mode to continous
     //adc_set_continuous_conversion_mode(VIDEO_ADC);
-    adc_disable_discontinuous_mode(VIDEO_ADC);
-    adc_set_operation_mode (VIDEO_ADC, ADC_MODE_SEQUENTIAL);
+    adc_disable_discontinuous_mode_regular(VIDEO_ADC);
+    //FIXME? adc_set_operation_mode (VIDEO_ADC, ADC_MODE_SEQUENTIAL);
+    adc_set_single_conversion_mode(VIDEO_ADC);
 
     // ext trigger: TIM1_TRGO
     adc_enable_external_trigger_regular(VIDEO_ADC, ADC_CFGR1_EXTSEL_VAL(0), ADC_CFGR1_EXTEN_RISING_EDGE);
 
     // right 12-bit data alignment in ADC reg
     adc_set_right_aligned(VIDEO_ADC);
-    adc_set_resolution(VIDEO_ADC, ADC_RESOLUTION_12BIT);
+    adc_set_resolution(VIDEO_ADC, ADC_CFGR1_RES_12_BIT);
 
     // adc_enable_temperature_sensor();
-    adc_disable_analog_watchdog(VIDEO_ADC);
+    adc_disable_analog_watchdog_regular(VIDEO_ADC);
 
     // configure channel
     uint8_t channels[] = { VIDEO_ADC_CHANNEL };
 
     // sample times for all channels
-    adc_set_sample_time_on_all_channels(VIDEO_ADC, ADC_SMPTIME_041DOT5);
+    adc_set_sample_time_on_all_channels(VIDEO_ADC, ADC_SMPR_SMP_61DOT5CYC);
 
     adc_set_regular_sequence(VIDEO_ADC, sizeof(channels), channels);
 
+    // start up adc
     adc_power_on(VIDEO_ADC);
 
     // wait for ADC starting up
@@ -114,5 +119,6 @@ static void adc_init_mode(void) {
         asm("nop");
     }
 
+    // enable triggering per timer
     ADC_CR(VIDEO_ADC) |= ADC_CR_ADSTART;
 }

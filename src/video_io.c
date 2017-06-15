@@ -42,10 +42,10 @@ static void video_io_init_rcc(void) {
     debug_function_call();
 
     // DAC clock
-    rcc_periph_clock_enable(RCC_DAC);
+    rcc_periph_clock_enable(RCC_DAC1);
 
-    // for EXTI
-    rcc_periph_clock_enable(RCC_SYSCFG_COMP);
+    // for EXTI / COMP (syscfg and comp share clock enable)
+    rcc_periph_clock_enable(RCC_SYSCFG);
 
     // timer1 clock
     rcc_periph_clock_enable(RCC_TIM1);
@@ -63,7 +63,7 @@ static void video_io_init_rcc(void) {
     rcc_periph_clock_enable(VIDEO_SPI_BLACK_RCC);
 
     // enable DMA Peripheral Clock
-    rcc_periph_clock_enable(RCC_DMA);
+    rcc_periph_clock_enable(RCC_DMA1);
 }
 
 static void video_io_init_gpio(void) {
@@ -76,22 +76,20 @@ static void video_io_init_gpio(void) {
     gpio_mode_setup(VIDEO_GPIO, GPIO_MODE_ANALOG, GPIO_PUPD_NONE, VIDEO_DAC_OUT_PIN);
     gpio_set_output_options(VIDEO_GPIO, GPIO_OTYPE_PP, GPIO_OSPEED_50MHZ, VIDEO_DAC_OUT_PIN);
 
-    // set spi to output
-    // init sck (5, for dbg), MOSI (7)
-    uint32_t spi_gpios = VIDEO_WHITE_SCK_PIN | VIDEO_WHITE_MOSI_PIN;
-
-    // set mode
-    gpio_mode_setup(VIDEO_WHITE_GPIO, GPIO_MODE_AF, GPIO_PUPD_NONE, spi_gpios);
-    gpio_set_output_options(VIDEO_WHITE_GPIO, GPIO_OTYPE_PP, GPIO_OSPEED_50MHZ, spi_gpios);
+    // set spi mosi to output
+    gpio_mode_setup(VIDEO_WHITE_GPIO, GPIO_MODE_AF, GPIO_PUPD_NONE, VIDEO_WHITE_MOSI_PIN);
+    //gpio_mode_setup(VIDEO_WHITE_GPIO, GPIO_MODE_OUTPUT, GPIO_PUPD_NONE, VIDEO_WHITE_MOSI_PIN);
+    gpio_set_af(VIDEO_WHITE_GPIO, VIDEO_WHITE_MOSI_AF, VIDEO_WHITE_MOSI_PIN);
+    gpio_set_output_options(VIDEO_WHITE_GPIO, GPIO_OTYPE_PP, GPIO_OSPEED_50MHZ, VIDEO_WHITE_MOSI_PIN);
     gpio_clear(VIDEO_WHITE_GPIO, VIDEO_WHITE_MOSI_PIN);
 
-    // set spi to output
-    // init sck (13, for dbg), MOSI (15)
-    spi_gpios = VIDEO_BLACK_MOSI_PIN | VIDEO_BLACK_SCK_PIN;
-    // set mode
-    gpio_mode_setup(VIDEO_BLACK_GPIO, GPIO_MODE_AF, GPIO_PUPD_NONE, spi_gpios);
-    gpio_set_output_options(VIDEO_BLACK_GPIO, GPIO_OTYPE_PP, GPIO_OSPEED_50MHZ, spi_gpios);
-    gpio_set(VIDEO_BLACK_GPIO, VIDEO_BLACK_MOSI_PIN);
+    // set spi mosi to output
+    gpio_mode_setup(VIDEO_BLACK_GPIO, GPIO_MODE_AF, GPIO_PUPD_NONE, VIDEO_BLACK_MOSI_PIN);
+    //gpio_mode_setup(VIDEO_BLACK_GPIO, GPIO_MODE_OUTPUT, GPIO_PUPD_NONE, VIDEO_BLACK_MOSI_PIN);
+    gpio_set_af(VIDEO_BLACK_GPIO, VIDEO_BLACK_MOSI_AF, VIDEO_BLACK_MOSI_PIN);
+    gpio_set_output_options(VIDEO_BLACK_GPIO, GPIO_OTYPE_PP, GPIO_OSPEED_50MHZ, VIDEO_BLACK_MOSI_PIN);
+    gpio_clear(VIDEO_BLACK_GPIO, VIDEO_BLACK_MOSI_PIN);
+
 }
 
 

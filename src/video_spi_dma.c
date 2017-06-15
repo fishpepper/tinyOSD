@@ -48,6 +48,11 @@ void video_spi_dma_init(void) {
 
     // set up dma
     video_spi_dma_init_dma();
+
+    // fire DMA for the first time to have valid levels on the MOSI pins
+    debug("not sure if this works, testme\n");
+    SPI_CR2(VIDEO_SPI_WHITE) |= SPI_CR2_TXDMAEN;
+    SPI_CR2(VIDEO_SPI_BLACK) |= SPI_CR2_TXDMAEN;
 }
 
 
@@ -81,11 +86,12 @@ static void video_spi_dma_init_spi(uint32_t spi) {
     spi_enable_software_slave_management(spi);
     spi_set_nss_high(spi);
 
+    // set fifo to quarter full(=1 byte)
+    spi_fifo_reception_threshold_8bit(spi);
+
     // Enable SPI periph
     spi_enable(spi);
 
-    // set fifo to quarter full(=1 byte)
-    spi_fifo_reception_threshold_8bit(spi);
 }
 
 
@@ -94,11 +100,11 @@ static void video_spi_dma_init_dma(void) {
     debug_function_call();
 
     // start disabled
-    dma_disable_channel(VIDEO_DMA_WHITE, DMA_CHANNEL2);
-    dma_disable_channel(VIDEO_DMA_WHITE, DMA_CHANNEL3);
+    dma_disable_channel(VIDEO_DMA_WHITE, VIDEO_WHITE_TIMER_DMA_CH);
+    dma_disable_channel(VIDEO_DMA_WHITE, VIDEO_WHITE_DMA_CH);
 
-    dma_disable_channel(VIDEO_DMA_BLACK, DMA_CHANNEL4);
-    dma_disable_channel(VIDEO_DMA_BLACK, DMA_CHANNEL5);
+    dma_disable_channel(VIDEO_DMA_BLACK, VIDEO_BLACK_TIMER_DMA_CH);
+    dma_disable_channel(VIDEO_DMA_BLACK, VIDEO_BLACK_DMA_CH);
 
     // TIM1_CH1 = DMA CH2
     // -> write SPI  SPI_CR2(spi) |= SPI_CR2_TXDMAEN
@@ -108,160 +114,161 @@ static void video_spi_dma_init_dma(void) {
     // write SPI txdma
     // this will initiate SPI tx on DMA CH5
 
-    // SPI CH3 -> WHITE pixel
-    nvic_set_priority(NVIC_DMA1_CHANNEL2_3_IRQ, NVIC_PRIO_DMA1);
-    nvic_enable_irq(NVIC_DMA1_CHANNEL2_3_IRQ);
+    // BLACK = SPI3 TX = CH3
+    nvic_set_priority(VIDEO_BLACK_DMA_IRQ, NVIC_PRIO_DMA1);
+    nvic_enable_irq(VIDEO_BLACK_DMA_IRQ);
 
-    // SPI CH5 -> BLACK pixel
-    nvic_set_priority(NVIC_DMA1_CHANNEL4_5_IRQ, NVIC_PRIO_DMA1);
-    nvic_enable_irq(NVIC_DMA1_CHANNEL4_5_IRQ);
-
+    // WHITE = SPI2 TX = CH5
+    nvic_set_priority(VIDEO_WHITE_DMA_IRQ, NVIC_PRIO_DMA1);
+    nvic_enable_irq(VIDEO_WHITE_DMA_IRQ);
 
     /***********************************************************/
 
+
+
     // start with clean init
-    dma_channel_reset(VIDEO_DMA_WHITE, DMA_CHANNEL3);
+    dma_channel_reset(VIDEO_DMA_WHITE, VIDEO_WHITE_DMA_CH);
 
     // source and destination size
-    dma_set_memory_size(VIDEO_DMA_WHITE, DMA_CHANNEL3, DMA_CCR_MSIZE_16BIT);
-    dma_set_peripheral_size(VIDEO_DMA_WHITE, DMA_CHANNEL3, DMA_CCR_PSIZE_16BIT);
+    dma_set_memory_size(VIDEO_DMA_WHITE, VIDEO_WHITE_DMA_CH, DMA_CCR_MSIZE_16BIT);
+    dma_set_peripheral_size(VIDEO_DMA_WHITE, VIDEO_WHITE_DMA_CH, DMA_CCR_PSIZE_16BIT);
 
     // auto memory destination increment mode
-    dma_enable_memory_increment_mode(VIDEO_DMA_WHITE, DMA_CHANNEL3);
+    dma_enable_memory_increment_mode(VIDEO_DMA_WHITE, VIDEO_WHITE_DMA_CH);
     // source address increment disable
-    dma_disable_peripheral_increment_mode(VIDEO_DMA_WHITE, DMA_CHANNEL3);
+    dma_disable_peripheral_increment_mode(VIDEO_DMA_WHITE, VIDEO_WHITE_DMA_CH);
 
     // Location assigned to peripheral register will be target
-    dma_set_read_from_memory(VIDEO_DMA_WHITE, DMA_CHANNEL3);
+    dma_set_read_from_memory(VIDEO_DMA_WHITE, VIDEO_WHITE_DMA_CH);
 
     // source and destination start addresses
-    dma_set_peripheral_address(VIDEO_DMA_WHITE, DMA_CHANNEL3, (uint32_t)&(SPI_DR(VIDEO_SPI_WHITE)));
-    dma_set_memory_address(VIDEO_DMA_WHITE, DMA_CHANNEL3,
+    dma_set_peripheral_address(VIDEO_DMA_WHITE, VIDEO_WHITE_DMA_CH, (uint32_t)&(SPI_DR(VIDEO_SPI_WHITE)));
+    dma_set_memory_address(VIDEO_DMA_WHITE, VIDEO_WHITE_DMA_CH,
                            (uint32_t)&video_line.buffer[WHITE][video_line.currently_rendering][0]);
 
     // write full len
-    dma_set_number_of_data(VIDEO_DMA_WHITE, DMA_CHANNEL3, VIDEO_BUFFER_WIDTH/2);
+    dma_set_number_of_data(VIDEO_DMA_WHITE, VIDEO_WHITE_DMA_CH, VIDEO_BUFFER_WIDTH/2);
 
     // very high DMA_CHANNEL3
-    dma_set_priority(VIDEO_DMA_WHITE, DMA_CHANNEL3, DMA_CCR_PL_VERY_HIGH);
+    dma_set_priority(VIDEO_DMA_WHITE, VIDEO_WHITE_DMA_CH, DMA_CCR_PL_VERY_HIGH);
 
     // enable tx complete int
-    dma_enable_transfer_complete_interrupt(VIDEO_DMA_WHITE, DMA_CHANNEL3);
+    dma_enable_transfer_complete_interrupt(VIDEO_DMA_WHITE, VIDEO_WHITE_DMA_CH);
 
     // start with clean init
-    dma_channel_reset(VIDEO_DMA_BLACK, DMA_CHANNEL5);
+    dma_channel_reset(VIDEO_DMA_BLACK, VIDEO_BLACK_DMA_CH);
 
     // source and destination size
-    dma_set_memory_size(VIDEO_DMA_BLACK, DMA_CHANNEL5, DMA_CCR_MSIZE_16BIT);
-    dma_set_peripheral_size(VIDEO_DMA_BLACK, DMA_CHANNEL5, DMA_CCR_PSIZE_16BIT);
+    dma_set_memory_size(VIDEO_DMA_BLACK, VIDEO_BLACK_DMA_CH, DMA_CCR_MSIZE_16BIT);
+    dma_set_peripheral_size(VIDEO_DMA_BLACK, VIDEO_BLACK_DMA_CH, DMA_CCR_PSIZE_16BIT);
 
     // auto memory destination increment mode
-    dma_enable_memory_increment_mode(VIDEO_DMA_BLACK, DMA_CHANNEL5);
+    dma_enable_memory_increment_mode(VIDEO_DMA_BLACK, VIDEO_BLACK_DMA_CH);
     // source address increment disable
-    dma_disable_peripheral_increment_mode(VIDEO_DMA_BLACK, DMA_CHANNEL5);
+    dma_disable_peripheral_increment_mode(VIDEO_DMA_BLACK, VIDEO_BLACK_DMA_CH);
 
     // Location assigned to peripheral register will be target
-    dma_set_read_from_memory(VIDEO_DMA_BLACK, DMA_CHANNEL5);
+    dma_set_read_from_memory(VIDEO_DMA_BLACK, VIDEO_BLACK_DMA_CH);
 
     // source and destination start addresses
-    dma_set_peripheral_address(VIDEO_DMA_BLACK, DMA_CHANNEL5, (uint32_t)&(SPI_DR(VIDEO_SPI_BLACK)));
-    dma_set_memory_address(VIDEO_DMA_BLACK, DMA_CHANNEL5,
+    dma_set_peripheral_address(VIDEO_DMA_BLACK, VIDEO_BLACK_DMA_CH, (uint32_t)&(SPI_DR(VIDEO_SPI_BLACK)));
+    dma_set_memory_address(VIDEO_DMA_BLACK, VIDEO_BLACK_DMA_CH,
                            (uint32_t)&video_line.buffer[BLACK][video_line.currently_rendering][0]);
 
     // write full len
-    dma_set_number_of_data(VIDEO_DMA_BLACK, DMA_CHANNEL5, VIDEO_BUFFER_WIDTH/2);
+    dma_set_number_of_data(VIDEO_DMA_BLACK, VIDEO_BLACK_DMA_CH, VIDEO_BUFFER_WIDTH/2);
 
     // very high prio
-    dma_set_priority(VIDEO_DMA_BLACK, DMA_CHANNEL5, DMA_CCR_PL_VERY_HIGH);
+    dma_set_priority(VIDEO_DMA_BLACK, VIDEO_BLACK_DMA_CH, DMA_CCR_PL_VERY_HIGH);
 
     // enable tx complete int
-    dma_enable_transfer_complete_interrupt(VIDEO_DMA_BLACK, DMA_CHANNEL5);
+    dma_enable_transfer_complete_interrupt(VIDEO_DMA_BLACK, VIDEO_BLACK_DMA_CH);
 
 
     /***********************************************************/
 
     // start with clean init
-    dma_channel_reset(VIDEO_DMA_WHITE, DMA_CHANNEL2);
+    dma_channel_reset(VIDEO_DMA_WHITE, VIDEO_WHITE_TIMER_DMA_CH);
 
     // source and destination size
-    dma_set_memory_size(VIDEO_DMA_WHITE, DMA_CHANNEL2, DMA_CCR_MSIZE_32BIT);
-    dma_set_peripheral_size(VIDEO_DMA_WHITE, DMA_CHANNEL2, DMA_CCR_PSIZE_32BIT);
+    dma_set_memory_size(VIDEO_DMA_WHITE, VIDEO_WHITE_TIMER_DMA_CH, DMA_CCR_MSIZE_32BIT);
+    dma_set_peripheral_size(VIDEO_DMA_WHITE, VIDEO_WHITE_TIMER_DMA_CH, DMA_CCR_PSIZE_32BIT);
 
     // memory destination increment disable
-    dma_disable_memory_increment_mode(VIDEO_DMA_WHITE, DMA_CHANNEL2);
+    dma_disable_memory_increment_mode(VIDEO_DMA_WHITE, VIDEO_WHITE_TIMER_DMA_CH);
     // source address increment disable
-    dma_disable_peripheral_increment_mode(VIDEO_DMA_WHITE, DMA_CHANNEL2);
+    dma_disable_peripheral_increment_mode(VIDEO_DMA_WHITE, VIDEO_WHITE_TIMER_DMA_CH);
 
     // Location assigned to peripheral register will be target
-    dma_set_read_from_memory(VIDEO_DMA_WHITE, DMA_CHANNEL2);
+    dma_set_read_from_memory(VIDEO_DMA_WHITE, VIDEO_WHITE_TIMER_DMA_CH);
 
     // source and destination start addresses
-    dma_set_peripheral_address(VIDEO_DMA_WHITE, DMA_CHANNEL2, (uint32_t)&(SPI_CR2(VIDEO_SPI_WHITE)));
+    dma_set_peripheral_address(VIDEO_DMA_WHITE, VIDEO_WHITE_TIMER_DMA_CH, (uint32_t)&(SPI_CR2(VIDEO_SPI_WHITE)));
 
     //dma write will trigger SPI dma
     video_spi_dma_cr_trigger[0] = SPI_CR2(VIDEO_SPI_WHITE) | SPI_CR2_TXDMAEN;
-    dma_set_memory_address(VIDEO_DMA_WHITE, DMA_CHANNEL2, (uint32_t)&(video_spi_dma_cr_trigger[0]));
+    dma_set_memory_address(VIDEO_DMA_WHITE, VIDEO_WHITE_TIMER_DMA_CH, (uint32_t)&(video_spi_dma_cr_trigger[0]));
 
     // single word write
-    dma_set_number_of_data(VIDEO_DMA_WHITE, DMA_CHANNEL2, 1);
+    dma_set_number_of_data(VIDEO_DMA_WHITE, VIDEO_WHITE_TIMER_DMA_CH, 1);
     // very high prio
-    dma_set_priority(VIDEO_DMA_WHITE, DMA_CHANNEL2, DMA_CCR_PL_VERY_HIGH);
+    dma_set_priority(VIDEO_DMA_WHITE, VIDEO_WHITE_TIMER_DMA_CH, DMA_CCR_PL_VERY_HIGH);
 
 
 
     // start with clean init
-    dma_channel_reset(VIDEO_DMA_BLACK, DMA_CHANNEL4);
+    dma_channel_reset(VIDEO_DMA_BLACK, VIDEO_BLACK_TIMER_DMA_CH);
 
     // source and destination size
-    dma_set_memory_size(VIDEO_DMA_BLACK, DMA_CHANNEL4, DMA_CCR_MSIZE_32BIT);
-    dma_set_peripheral_size(VIDEO_DMA_BLACK, DMA_CHANNEL4, DMA_CCR_PSIZE_32BIT);
+    dma_set_memory_size(VIDEO_DMA_BLACK, VIDEO_BLACK_TIMER_DMA_CH, DMA_CCR_MSIZE_32BIT);
+    dma_set_peripheral_size(VIDEO_DMA_BLACK, VIDEO_BLACK_TIMER_DMA_CH, DMA_CCR_PSIZE_32BIT);
 
     // memory destination increment disable
-    dma_disable_memory_increment_mode(VIDEO_DMA_BLACK, DMA_CHANNEL4);
+    dma_disable_memory_increment_mode(VIDEO_DMA_BLACK, VIDEO_BLACK_TIMER_DMA_CH);
     // source address increment disable
-    dma_disable_peripheral_increment_mode(VIDEO_DMA_BLACK, DMA_CHANNEL4);
+    dma_disable_peripheral_increment_mode(VIDEO_DMA_BLACK, VIDEO_BLACK_TIMER_DMA_CH);
 
     // Location assigned to peripheral register will be target
-    dma_set_read_from_memory(VIDEO_DMA_BLACK, DMA_CHANNEL4);
+    dma_set_read_from_memory(VIDEO_DMA_BLACK, VIDEO_BLACK_TIMER_DMA_CH);
 
     // source and destination start addresses
-    dma_set_peripheral_address(VIDEO_DMA_BLACK, DMA_CHANNEL4, (uint32_t)&(SPI_CR2(VIDEO_SPI_BLACK)));
+    dma_set_peripheral_address(VIDEO_DMA_BLACK, VIDEO_BLACK_TIMER_DMA_CH, (uint32_t)&(SPI_CR2(VIDEO_SPI_BLACK)));
 
     //dma write will trigger SPI dma
     video_spi_dma_cr_trigger[1] = SPI_CR2(VIDEO_SPI_BLACK) | SPI_CR2_TXDMAEN;
-    dma_set_memory_address(VIDEO_DMA_BLACK, DMA_CHANNEL4, (uint32_t)&(video_spi_dma_cr_trigger[1]));
+    dma_set_memory_address(VIDEO_DMA_BLACK, VIDEO_BLACK_TIMER_DMA_CH, (uint32_t)&(video_spi_dma_cr_trigger[1]));
 
     // single word write
-    dma_set_number_of_data(VIDEO_DMA_BLACK, DMA_CHANNEL4, 1);
+    dma_set_number_of_data(VIDEO_DMA_BLACK, VIDEO_BLACK_TIMER_DMA_CH, 1);
 
     // very high prio
-    dma_set_priority(VIDEO_DMA_BLACK, DMA_CHANNEL4, DMA_CCR_PL_VERY_HIGH);
+    dma_set_priority(VIDEO_DMA_BLACK, VIDEO_BLACK_TIMER_DMA_CH, DMA_CCR_PL_VERY_HIGH);
 }
 
 
 
 // BLACK DMA
-void DMA1_CHANNEL4_5_IRQHandler(void) {
+void VIDEO_BLACK_DMA_IRQ_HANDLER(void) {
     // clear flags
     DMA_CLEAR_INTERRUPT_FLAGS_MULTI(VIDEO_DMA_BLACK,
-                                    (DMA_TCIF) << DMA_FLAG_OFFSET(DMA_CHANNEL4) |
-                                    (DMA_TCIF) << DMA_FLAG_OFFSET(DMA_CHANNEL5));
+                                    (DMA_TCIF) << DMA_FLAG_OFFSET(VIDEO_BLACK_TIMER_DMA_CH) |
+                                    (DMA_TCIF) << DMA_FLAG_OFFSET(VIDEO_BLACK_DMA_CH));
 
     // disable dma during config
-    DMA_DISABLE_CHANNEL(VIDEO_DMA_BLACK, DMA_CHANNEL4);
-    DMA_DISABLE_CHANNEL(VIDEO_DMA_BLACK, DMA_CHANNEL5);
+    DMA_DISABLE_CHANNEL(VIDEO_DMA_BLACK, VIDEO_BLACK_TIMER_DMA_CH);
+    DMA_DISABLE_CHANNEL(VIDEO_DMA_BLACK, VIDEO_BLACK_DMA_CH);
 
     //clear pending dma transfer flag
     SPI_CR2(VIDEO_SPI_BLACK) &= ~SPI_CR2_TXDMAEN;
 
 
     // prepare to send tx trigger
-    DMA_SET_NUMBER_OF_DATA(VIDEO_DMA_BLACK, DMA_CHANNEL4, 1);
+    DMA_SET_NUMBER_OF_DATA(VIDEO_DMA_BLACK, VIDEO_BLACK_TIMER_DMA_CH, 1);
 
     // prepare to send dma spi data
-    DMA_SET_MEMORY_ADDRES_NOCHECK(VIDEO_DMA_BLACK, DMA_CHANNEL5,
+    DMA_SET_MEMORY_ADDRES_NOCHECK(VIDEO_DMA_BLACK, VIDEO_BLACK_DMA_CH,
                                   (uint32_t)&video_line.buffer[BLACK][video_line.currently_rendering][0]);
-    DMA_SET_NUMBER_OF_DATA(VIDEO_DMA_BLACK, DMA_CHANNEL5, VIDEO_BUFFER_WIDTH/2);
+    DMA_SET_NUMBER_OF_DATA(VIDEO_DMA_BLACK, VIDEO_BLACK_DMA_CH, VIDEO_BUFFER_WIDTH/2);
 
     // clear all dma if
     // NOT NECESSARY? move to define if enable is necc...
@@ -275,26 +282,26 @@ void DMA1_CHANNEL4_5_IRQHandler(void) {
 }
 
 // WHITE DMA
-void DMA1_CHANNEL2_3_IRQHandler(void) {
+void VIDEO_WHITE_DMA_IRQ_HANDLER(void) {
     // clear flags
     DMA_CLEAR_INTERRUPT_FLAGS_MULTI(VIDEO_DMA_BLACK,
-                                    (DMA_TCIF) << DMA_FLAG_OFFSET(DMA_CHANNEL2) |
-                                    (DMA_TCIF) << DMA_FLAG_OFFSET(DMA_CHANNEL3));
+                                    (DMA_TCIF) << DMA_FLAG_OFFSET(VIDEO_WHITE_TIMER_DMA_CH) |
+                                    (DMA_TCIF) << DMA_FLAG_OFFSET(VIDEO_WHITE_DMA_CH));
 
     // disable dma during config
-    DMA_DISABLE_CHANNEL(VIDEO_DMA_WHITE, DMA_CHANNEL2);
-    DMA_DISABLE_CHANNEL(VIDEO_DMA_WHITE, DMA_CHANNEL3);
+    DMA_DISABLE_CHANNEL(VIDEO_DMA_WHITE, VIDEO_WHITE_TIMER_DMA_CH);
+    DMA_DISABLE_CHANNEL(VIDEO_DMA_WHITE, VIDEO_WHITE_DMA_CH);
 
     //clear pending dma transfer flag
     SPI_CR2(VIDEO_SPI_WHITE) &= ~SPI_CR2_TXDMAEN;
 
     // prepare to send tx trigger
-    DMA_SET_NUMBER_OF_DATA(VIDEO_DMA_WHITE, DMA_CHANNEL2, 1);
+    DMA_SET_NUMBER_OF_DATA(VIDEO_DMA_WHITE, VIDEO_WHITE_TIMER_DMA_CH, 1);
 
     // prepare to send dma spi data
-    DMA_SET_MEMORY_ADDRES_NOCHECK(VIDEO_DMA_WHITE, DMA_CHANNEL3,
+    DMA_SET_MEMORY_ADDRES_NOCHECK(VIDEO_DMA_WHITE, VIDEO_WHITE_DMA_CH,
                                   (uint32_t)&video_line.buffer[WHITE][video_line.currently_rendering][0]);
-    DMA_SET_NUMBER_OF_DATA(VIDEO_DMA_WHITE, DMA_CHANNEL3, VIDEO_BUFFER_WIDTH/2);
+    DMA_SET_NUMBER_OF_DATA(VIDEO_DMA_WHITE, VIDEO_WHITE_DMA_CH, VIDEO_BUFFER_WIDTH/2);
 
     // clear all dma if
     // NOT NECESSARY? move to define if enable is necc...

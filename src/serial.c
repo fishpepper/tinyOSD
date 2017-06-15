@@ -23,6 +23,7 @@
 #include "config.h"
 #include "video.h"
 #include "led.h"
+#include "macros.h"
 #include "crc8.h"
 
 #include <stdint.h>
@@ -90,7 +91,7 @@ void serial_init_uart(void) {
     usart_set_baudrate(SERIAL_UART, SERIAL_UART_BAUDRATE);
     usart_set_databits(SERIAL_UART, 8);
     usart_set_parity(SERIAL_UART, USART_PARITY_NONE);
-    usart_set_stopbits(SERIAL_UART, USART_CR2_STOP_1_0BIT);
+    usart_set_stopbits(SERIAL_UART, USART_CR2_STOPBITS_1);
     usart_set_mode(SERIAL_UART, USART_MODE_TX_RX);
     usart_set_flow_control(SERIAL_UART, USART_FLOWCONTROL_NONE);
 

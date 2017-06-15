@@ -20,6 +20,7 @@
 #include "debug.h"
 #include "delay.h"
 #include "main.h"
+#include "macros.h"
 #include <stdint.h>
 #include "config.h"
 
@@ -63,7 +64,7 @@ void debug_init_uart(void) {
     usart_set_baudrate(DEBUG_UART, DEBUG_UART_BAUDRATE);
     usart_set_databits(DEBUG_UART, 8);
     usart_set_parity(DEBUG_UART, USART_PARITY_NONE);
-    usart_set_stopbits(DEBUG_UART, USART_CR2_STOP_1_0BIT);
+    usart_set_stopbits(DEBUG_UART, USART_CR2_STOPBITS_1);
     usart_set_mode(DEBUG_UART, USART_MODE_TX);
     usart_set_flow_control(DEBUG_UART, USART_FLOWCONTROL_NONE);
 

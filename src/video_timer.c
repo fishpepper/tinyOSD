@@ -43,7 +43,6 @@ static volatile uint16_t video_sync_last_compare_value;
 void video_timer_init(void) {
     video_timer_init_tim1();
     video_timer_init_comparator();
-    //video_timer_init_comparator_interrupt();
 }
 
 static void video_timer_init_tim1(void) {
@@ -69,10 +68,9 @@ static void video_timer_init_tim1(void) {
 
     // enable master mode TRGO = CH3 OC (used as adc trigger)
     timer_set_master_mode(TIM1, TIM_CR2_MMS_COMPARE_OC3REF);
+
     //OC3REF is set on compare match
     timer_set_oc_mode(TIM1, TIM_OC3, TIM_OCM_PWM2);
-
-
 
     // input compare trigger
     // on channel IC2
@@ -124,24 +122,21 @@ static void video_timer_init_comparator(void) {
     debug_function_call();
 
     // start disabled
-    comp_disable(COMP1);
+    comp_disable(VIDEO_COMP);
 
     // set comparator inputs
-    // inp = PA1
+    // inp = PA7
     // inm = DAC_OUT_1 (PA4) -> INM4
-    comp_select_input(COMP1, COMP_CSR_INSEL_INM4);
+    comp_select_input_m(VIDEO_COMP, COMP2_CSR_INMSEL_DAC1_OUT1);
 
     // IC2 output
-    comp_select_output(COMP1, COMP_CSR_OUTSEL_TIM1_IC1);
+    comp_select_output(VIDEO_COMP, COMP2_CSR_OUTSEL_TIM1_IC1);
 
     // hysteresis
-    comp_select_hyst(COMP1, COMP_CSR_HYST_MED);
-
-    // speed --> FAST!
-    comp_select_speed(COMP1, COMP_CSR_SPEED_HIGH);
+    comp_select_hyst(VIDEO_COMP, COMP_CSR_HYST_MED);
 
     // enable
-    comp_enable(COMP1);
+    comp_enable(VIDEO_COMP);
 }
 
 void video_timer_init_interrupt(void) {
@@ -156,7 +151,8 @@ void video_timer_init_interrupt(void) {
     nvic_set_priority(VIDEO_COMP_EXTI_IRQN, NVIC_PRIO_COMPARATOR);
 }
 
-void ADC_COMP_IRQHandler(void) {
+void COMP123_IRQHandler(void) {
+    debug_putc('C');
     // well, this irq is only called on comp interrupts -> skip checking...
     // if (exti_get_flag_status(VIDEO_COMP_EXTI_SOURCE_LINE) != 0) {
     // clear flag
@@ -170,7 +166,7 @@ void ADC_COMP_IRQHandler(void) {
 
     // we trigger on both edges
     // check if this was rising or falling edge:
-    if (!(COMP_CSR(COMP1) & (1<<14))) {
+    if (!(COMP_CSR(VIDEO_COMP) & (COMP2_CSR_COMPOUT))) {
         // falling edge -> this was measuring the field length
         if ((pulse_len > VIDEO_SYNC_VSYNC_MIN) && (pulse_len < VIDEO_SYNC_VSYNC_MAX)) {
             // this was the last half line -> hsync!
@@ -214,17 +210,17 @@ void ADC_COMP_IRQHandler(void) {
             video_line.currently_rendering = 1 - video_line.currently_rendering;
             video_line.fill_request        = video_line.currently_rendering;
 
-            TIMER_ENABLE_IRQ(TIM1, TIM_DIER_CC1DE | TIM_DIER_CC4DE);
+            TIMER_ENABLE_IRQ(TIM1, TIM_DIER_CC1DE);
 
             if (VIDEO_DEBUG_DMA) TIMER_ENABLE_IRQ(TIM1, TIM_DIER_CC4IE);
 
             //TIMER_ENABLE_IRQ(TIM1, TIM_DIER_CC3IE);
 
             // enable dma channel, this was set up during the dma end of tx int
-            DMA_ENABLE_CHANNEL(VIDEO_DMA_WHITE, DMA_CHANNEL2);
-            DMA_ENABLE_CHANNEL(VIDEO_DMA_WHITE, DMA_CHANNEL3);
-            DMA_ENABLE_CHANNEL(VIDEO_DMA_BLACK, DMA_CHANNEL4);
-            DMA_ENABLE_CHANNEL(VIDEO_DMA_BLACK, DMA_CHANNEL5);
+            DMA_ENABLE_CHANNEL(VIDEO_DMA_WHITE, VIDEO_WHITE_TIMER_DMA_CH);
+            DMA_ENABLE_CHANNEL(VIDEO_DMA_WHITE, VIDEO_WHITE_DMA_CH);
+            DMA_ENABLE_CHANNEL(VIDEO_DMA_BLACK, VIDEO_BLACK_TIMER_DMA_CH);
+            DMA_ENABLE_CHANNEL(VIDEO_DMA_BLACK, VIDEO_BLACK_DMA_CH);
 
             if (VIDEO_DEBUG_DMA) led_off();
 

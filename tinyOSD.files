@@ -724,3 +724,14 @@ src/serial.c
 src/crc8.h
 src/adc.c
 src/adc.h
+src/config.h
+src/video.h
+src/video.c
+src/video_timer.h
+src/video_timer.c
+src/video_spi_dma.h
+src/video_spi_dma.c
+src/video_render.c
+src/video_render.h
+src/video_io.h
+src/video_io.c

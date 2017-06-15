@@ -9,17 +9,21 @@ BIN_DIR      = $(ROOT)/bin
 CFLAGS  = -O2 -g
 ASFLAGS = -g
 
+# flash using blackmagicprobe
+BMP_PORT ?= /dev/ttyACM0
+
+
 # dfu util path
 DFU_UTIL ?= dfu-util
 
 # opencm3 lib config
-LIBNAME         = opencm3_stm32f0
-DEFS            += -DSTM32F0
+LIBNAME         = opencm3_stm32f3
+DEFS            += -DSTM32F3
 
-FP_FLAGS        ?= -msoft-float
-ARCH_FLAGS      = -mthumb -mcpu=cortex-m0 $(FP_FLAGS)
+FP_FLAGS	?= -mfloat-abi=hard -mfpu=fpv4-sp-d16
+ARCH_FLAGS       = -mthumb -mcpu=cortex-m4 $(FP_FLAGS)
 
-LDSCRIPT = linker/stm32f051.ld
+LDSCRIPT = linker/stm32f301k8.ld
 TARGET   = tinyOSD
 
 CFLAGS += -I./src
@@ -120,6 +124,7 @@ list: $(BIN_DIR)/$(TARGET).list
 
 images: $(BIN_DIR)/$(TARGET).images
 flash: $(BIN_DIR)/$(TARGET).flash
+debug: $(BIN_DIR)/$(TARGET).debug
 
 # Either verify the user provided LDSCRIPT exists, or generate it.
 $(LDSCRIPT):
@@ -203,7 +208,7 @@ else
 	@printf "  GDB   $(*).elf (flash)\n"
 	$(GDB) --batch \
 		   -ex 'target extended-remote $(BMP_PORT)' \
-		   -x $(SCRIPT_DIR)/black_magic_probe_flash.scr \
+		   -x scripts/black_magic_probe_flash.scr \
 		   $(*).elf
 endif
 else
@@ -214,6 +219,15 @@ else
 		   -x $(SCRIPT_DIR)/stlink_flash.scr \
 		   $(*).elf
 endif
+
+%.debug: %.elf
+	@printf "  GDB   $(*).elf (flash)\n"
+	$(GDB)  \
+		-ex 'target extended-remote $(BMP_PORT)' \
+		-x scripts/black_magic_probe_debug.scr \
+                   $(*).elf
+
+
 sterase : 
 	st-flash erase
 
