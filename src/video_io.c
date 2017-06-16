@@ -90,6 +90,22 @@ static void video_io_init_gpio(void) {
     gpio_set_output_options(VIDEO_BLACK_GPIO, GPIO_OTYPE_PP, GPIO_OSPEED_50MHZ, VIDEO_BLACK_MOSI_PIN);
     gpio_clear(VIDEO_BLACK_GPIO, VIDEO_BLACK_MOSI_PIN);
 
+    // set WHITE DAC to output:
+    uint32_t pins = VIDEO_MUX_WHITE_DAC0 | VIDEO_MUX_WHITE_DAC1 | VIDEO_MUX_WHITE_DAC2 | VIDEO_MUX_WHITE_DAC3;
+    gpio_mode_setup(VIDEO_MUX_WHITE_GPIO, GPIO_MODE_OUTPUT, GPIO_PUPD_NONE, pins);
+    gpio_clear(VIDEO_MUX_WHITE_GPIO, pins);
+    gpio_set(VIDEO_MUX_WHITE_GPIO, VIDEO_MUX_WHITE_DAC2);
+    gpio_set(VIDEO_MUX_WHITE_GPIO, VIDEO_MUX_WHITE_DAC1);
+    gpio_set(VIDEO_MUX_WHITE_GPIO, VIDEO_MUX_WHITE_DAC0);
+
+    // set BLACK DAC to output:
+    pins = VIDEO_MUX_BLACK_DAC0 | VIDEO_MUX_BLACK_DAC1 | VIDEO_MUX_BLACK_DAC2 | VIDEO_MUX_BLACK_DAC3;
+    gpio_mode_setup(VIDEO_MUX_BLACK_GPIO, GPIO_MODE_OUTPUT, GPIO_PUPD_NONE, pins);
+    gpio_clear(VIDEO_MUX_BLACK_GPIO, pins);
+    gpio_set(VIDEO_MUX_BLACK_GPIO, VIDEO_MUX_BLACK_DAC1);
+
+
+
 }
 
 

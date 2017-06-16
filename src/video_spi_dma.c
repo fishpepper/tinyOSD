@@ -91,7 +91,6 @@ static void video_spi_dma_init_spi(uint32_t spi) {
 
     // Enable SPI periph
     spi_enable(spi);
-
 }
 
 

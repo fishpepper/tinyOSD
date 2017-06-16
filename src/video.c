@@ -221,12 +221,15 @@ void video_render_blank(uint16_t line) {
     }
 }
 
+#include <libopencm3/stm32/spi.h>
+
 void video_main_loop(void) {
     uint32_t page_to_fill;
 
     // endless loop
     while (1) {
         // store current page to render
+        //SPI_CR2(VIDEO_SPI_WHITE) = SPI_CR2(VIDEO_SPI_WHITE) | SPI_CR2_TXDMAEN;
 
         // is there a new line request?
         if (video_line.fill_request != VIDEO_BUFFER_FILL_REQUEST_IDLE) {

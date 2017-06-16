@@ -152,7 +152,6 @@ void video_timer_init_interrupt(void) {
 }
 
 void COMP123_IRQHandler(void) {
-    debug_putc('C');
     // well, this irq is only called on comp interrupts -> skip checking...
     // if (exti_get_flag_status(VIDEO_COMP_EXTI_SOURCE_LINE) != 0) {
     // clear flag
@@ -210,7 +209,7 @@ void COMP123_IRQHandler(void) {
             video_line.currently_rendering = 1 - video_line.currently_rendering;
             video_line.fill_request        = video_line.currently_rendering;
 
-            TIMER_ENABLE_IRQ(TIM1, TIM_DIER_CC1DE);
+            TIMER_ENABLE_IRQ(TIM1, TIM_DIER_CC1DE | TIM_DIER_CC4DE);
 
             if (VIDEO_DEBUG_DMA) TIMER_ENABLE_IRQ(TIM1, TIM_DIER_CC4IE);
 
