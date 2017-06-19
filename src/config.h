@@ -12,18 +12,21 @@
 
 #if (BOARD == CAMOSD_VM275)
     // vm275
+    #define CPU_VOLTAGE 1.8
     #define LED_GPIO GPIOA
     #define LED_PIN  GPIO5
     #define VIDEO_BSYNC_VOLTAGE_MV 100
-    #define VIDEO_DAC_VCC       1.8
+    #define VIDEO_DAC_VCC       CPU_VOLTAGE
 #elif (BOARD == CAMOSD_RUNCAM)
     // camOSD runcam
+    #define CPU_VOLTAGE 1.8
     #define LED_GPIO GPIOA
     #define LED_PIN  GPIO5
     #define VIDEO_BSYNC_VOLTAGE_MV 210
-    #define VIDEO_DAC_VCC       1.8
+    #define VIDEO_DAC_VCC       CPU_VOLTAGE
 #else
     // eval board
+    #define CPU_VOLTAGE 3.3
 #if 1
     //disabled
     #define LED_GPIO GPIOB
@@ -33,9 +36,13 @@
     #define LED_PIN  GPIO14
 #endif
     #define VIDEO_BSYNC_VOLTAGE_MV 100
-    #define VIDEO_DAC_VCC       3.0
+    #define VIDEO_DAC_VCC       CPU_VOLTAGE
 #endif
 
+
+
+#define VIDEO_LEVEL_TERMINATION_R     75.0
+#define VIDEO_LEVEL_R2R_1R           169.0
 
 #define VIDEO_ADC ADC1
 #define VIDEO_ADC_CHANNEL 10

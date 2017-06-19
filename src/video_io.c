@@ -18,8 +18,10 @@
 */
 
 #include "video_io.h"
+#include "video.h"
 #include "config.h"
 #include "macros.h"
+#include "delay.h"
 
 #include <libopencm3/stm32/rcc.h>
 #include <libopencm3/stm32/gpio.h>
@@ -30,6 +32,10 @@ static void video_io_init_rcc(void);
 static void video_io_init_gpio(void);
 static void video_io_init_dac(void);
 static void video_io_set_dac_value_raw(uint16_t taregt);
+
+static void video_io_set_level_mv(uint8_t port, uint16_t mv);
+static void video_io_set_white_level_raw(uint8_t byte);
+static void video_io_set_black_level_raw(uint8_t byte);
 
 void video_io_init(void) {
     video_io_init_rcc();
@@ -74,7 +80,7 @@ static void video_io_init_gpio(void) {
 
     // set dac to output
     gpio_mode_setup(VIDEO_GPIO, GPIO_MODE_ANALOG, GPIO_PUPD_NONE, VIDEO_DAC_OUT_PIN);
-    gpio_set_output_options(VIDEO_GPIO, GPIO_OTYPE_PP, GPIO_OSPEED_50MHZ, VIDEO_DAC_OUT_PIN);
+    //gpio_set_output_options(VIDEO_GPIO, GPIO_OTYPE_OD, GPIO_OSPEED_50MHZ, VIDEO_DAC_OUT_PIN);
 
     // set spi mosi to output
     gpio_mode_setup(VIDEO_WHITE_GPIO, GPIO_MODE_AF, GPIO_PUPD_NONE, VIDEO_WHITE_MOSI_PIN);
@@ -103,11 +109,80 @@ static void video_io_init_gpio(void) {
     gpio_mode_setup(VIDEO_MUX_BLACK_GPIO, GPIO_MODE_OUTPUT, GPIO_PUPD_NONE, pins);
     gpio_clear(VIDEO_MUX_BLACK_GPIO, pins);
     gpio_set(VIDEO_MUX_BLACK_GPIO, VIDEO_MUX_BLACK_DAC1);
+}
 
-
+void video_io_set_level(uint8_t port, uint8_t level){
+    // input: 0...100 for white level in percent
+    //   0 % = video signal min + black level
+    // 100 % = video signal min + black level + 700mV
+    // black level is 300mV
+    uint16_t v_black = video_min_level + 300;
+    uint16_t v_white = v_black + 700;
+    // we allow setting in between these ratios:
+    debug("video_io: v_min   = "); debug_put_uint16(video_min_level); debug_put_newline();
+    debug("video_io: v_black = "); debug_put_uint16(v_black); debug_put_newline();
+    debug("video_io: v_white = "); debug_put_uint16(v_white); debug_put_newline();
 
 }
 
+
+static void video_io_set_level_mv(uint8_t port, uint16_t mv){
+    debug_function_call_u16(mv);
+    // input: target voltage in mv
+    // the output is terminated with 75 Ohm
+    // minimum 1/Rtotal = 1/8R + 1/4R + 1/2R + 1/R
+    // Rtotal = 8R / 15
+    // Vmax   = CPU_VOLTAGE * VIDEO_LEVEL_TERMINATION_R / (VIDEO_LEVEL_TERMINATION_R + Rtotal)
+    float r_total = (8.0 * VIDEO_LEVEL_R2R_1R) / 15.0;
+    float mv_max   = (1000.0 * CPU_VOLTAGE) * VIDEO_LEVEL_TERMINATION_R / (VIDEO_LEVEL_TERMINATION_R + r_total);
+
+    // every lsb will give 1/15th of v_max:
+    float mv_lsb   = mv_max / 15.0;
+
+    float raw = mv / mv_lsb;
+
+    if (raw > 15.0) {
+        raw = 15;
+    }
+
+    if (port == WHITE) {
+        video_io_set_white_level_raw((uint8_t)raw);
+    } else {
+        video_io_set_black_level_raw((uint8_t)raw);
+    }
+}
+
+static void video_io_set_white_level_raw(uint8_t byte){
+    // input: raw value, lower 4 bit will be set on R2R DAC
+    uint32_t out = 0;
+
+    // stm32 BSRR register is tricky:
+    // writing to lower 16 bits set the I/O pin
+    // writing to higher 16 bits clear the I/O pin
+    if (byte & (1<<0)) { out |= VIDEO_MUX_WHITE_DAC0; } else { out |= (VIDEO_MUX_WHITE_DAC0)<<16; }
+    if (byte & (1<<1)) { out |= VIDEO_MUX_WHITE_DAC1; } else { out |= (VIDEO_MUX_WHITE_DAC1)<<16; }
+    if (byte & (1<<2)) { out |= VIDEO_MUX_WHITE_DAC2; } else { out |= (VIDEO_MUX_WHITE_DAC2)<<16; }
+    if (byte & (1<<3)) { out |= VIDEO_MUX_WHITE_DAC3; } else { out |= (VIDEO_MUX_WHITE_DAC3)<<16; }
+
+    // execute:
+    GPIO_BSRR(VIDEO_MUX_WHITE_GPIO) = out;
+}
+
+static void video_io_set_black_level_raw(uint8_t byte){
+    // input: raw value, lower 4 bit will be set on R2R DAC
+    uint32_t out = 0;
+
+    // stm32 BSRR register is tricky:
+    // writing to lower 16 bits set the I/O pin
+    // writing to higher 16 bits clear the I/O pin
+    if (byte & (1<<0)) { out |= VIDEO_MUX_BLACK_DAC0; } else { out |= (VIDEO_MUX_BLACK_DAC0)<<16; }
+    if (byte & (1<<1)) { out |= VIDEO_MUX_BLACK_DAC1; } else { out |= (VIDEO_MUX_BLACK_DAC1)<<16; }
+    if (byte & (1<<2)) { out |= VIDEO_MUX_BLACK_DAC2; } else { out |= (VIDEO_MUX_BLACK_DAC2)<<16; }
+    if (byte & (1<<3)) { out |= VIDEO_MUX_BLACK_DAC3; } else { out |= (VIDEO_MUX_BLACK_DAC3)<<16; }
+
+    // execute:
+    GPIO_BSRR(VIDEO_MUX_BLACK_GPIO) = out;
+}
 
 static void video_io_init_dac(void) {
     debug_function_call();
@@ -115,9 +190,11 @@ static void video_io_init_dac(void) {
     // start with disabled dac
     dac_disable(CHANNEL_1);
     dac_disable_waveform_generation(CHANNEL_1);
+   // dac_buffer_disable(CHANNEL_1);
 
     // set default value and enable output
     video_io_set_dac_value_mv(0);
+
     dac_enable(CHANNEL_1);
 
     // software update trigher
@@ -136,7 +213,7 @@ void video_io_set_dac_value_mv(uint16_t target) {
 
 static void video_io_set_dac_value_raw(uint16_t target) {
     //debug_function_call_h32(target);
-
+    //dac_load_data_buffer_single(target, RIGHT12, CHANNEL_1);
     dac_load_data_buffer_single(target, RIGHT12, CHANNEL_1);
     dac_software_trigger(CHANNEL_1);
 }

@@ -26,6 +26,7 @@
 #include "video.h"
 #include "serial.h"
 #include "adc.h"
+#include "macros.h"
 
 #include <stdlib.h>
 #include <libopencm3/cm3/nvic.h>
@@ -34,8 +35,41 @@
 
 // STM32F301 reference manual DM00094350.pdf
 // http://www.st.com/resource/en/reference_manual/dm00094350.pdf
-
+#include <libopencm3/stm32/dac.h>
+#include <libopencm3/stm32/rcc.h>
 int main(void) {
+#if 0
+    rcc_periph_clock_enable(GPIO_RCC(VIDEO_GPIO));
+    rcc_periph_clock_enable(RCC_DAC1);
+    // set dac to output
+    gpio_mode_setup(VIDEO_GPIO, GPIO_MODE_ANALOG, GPIO_PUPD_NONE, VIDEO_DAC_OUT_PIN);
+    //gpio_set_output_options(VIDEO_GPIO, GPIO_OTYPE_OD, GPIO_OSPEED_50MHZ, VIDEO_DAC_OUT_PIN);
+
+
+    // start with disabled dac
+    dac_disable(CHANNEL_1);
+    dac_disable_waveform_generation(CHANNEL_1);
+    dac_buffer_disable(CHANNEL_1);
+
+    // set default value and enable output
+
+    dac_enable(CHANNEL_1);
+
+    // software update trigher
+    dac_set_trigger_source(DAC_CR_TSEL1_SW);
+//invert??https://www.mikrocontroller.net/topic/404156
+clocksource_init();
+    uint16_t i=0;
+    while(1){
+
+        dac_load_data_buffer_single(i+=10, RIGHT12, CHANNEL_1);
+        if (i>500) i = 0;
+        dac_software_trigger(CHANNEL_1);
+        for(uint8_t j=0; j<10; j++) delay_us(100);
+    }
+
+    while(1);
+#endif
     // init crystal osc & set clock options
     clocksource_init();
 

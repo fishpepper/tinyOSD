@@ -51,6 +51,9 @@
 #define TIMER_SET_DMA_ON_COMPARE_EVENT(_tim) {  TIM_CR2(_tim) &= ~TIM_CR2_CCDS; }
 #define TIMER_CLEAR_DMA_ON_COMPARE_EVENT(_tim) {  TIM_CR2(_tim) |= TIM_CR2_CCDS; }
 
+#define GPIO_SET(__port, __gpios)   { GPIO_BSRR(__port) = __gpios; }
+#define GPIO_CLEAR(__port, __gpios) { GPIO_BSRR(__port) = (__gpios)<<16; }
+
 
 
 // ***************************************************

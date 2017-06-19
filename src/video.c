@@ -52,6 +52,7 @@ volatile uint32_t video_field;
 volatile uint32_t video_buffer_page;
 uint8_t video_armed_state;
 uint8_t video_mode;
+uint16_t video_min_level;
 
 
 void video_init(void) {
@@ -95,6 +96,17 @@ void video_init(void) {
     video_detect_pal_ntsc();
 
     led_off();
+
+
+    /*gpio_mode_setup(VIDEO_BLACK_GPIO, GPIO_MODE_OUTPUT, GPIO_PUPD_NONE, VIDEO_BLACK_MOSI_PIN);
+    gpio_set(VIDEO_BLACK_GPIO, VIDEO_BLACK_MOSI_PIN);
+    uint8_t p=0;
+    while(1){
+        video_io_set_level(BLACK, p);
+        p+= 10;
+        if (p>100) p = 0;
+        timeout_delay_ms(200);
+    }*/
 
     video_render_init();
 
@@ -144,6 +156,7 @@ static void video_detect_blank_level(void) {
         // 6ms counting interval should be good:
         timeout_set(6);
         uint16_t line_counter = 0;
+
         while(!timeout_timed_out()) {
             // count edges
             if (COMP_CSR(VIDEO_COMP) & (COMP2_CSR_COMPOUT)) {
@@ -164,8 +177,11 @@ static void video_detect_blank_level(void) {
             sync_level = min_level + 0.4*(mv - min_level);
             break;
         }
-        debug("tc "); debug_put_uint16(mv); debug("="); debug_put_uint16(line_counter);debug_put_newline();
+        /*debug("tc "); debug_put_uint16(mv); debug("="); debug_put_uint16(line_counter);debug_put_newline();
+        timeout_delay_ms(100);*/
     }
+    video_min_level = min_level;
+    debug("video: min  level = "); debug_put_uint16(video_min_level); debug_put_newline();
     debug("video: sync level = "); debug_put_uint16(sync_level); debug_put_newline();
 
     if (sync_level == 0) {
@@ -210,9 +226,9 @@ void video_render_blank(uint16_t line) {
         case(VIDEO_FIRST_ACTIVE_LINE-4):
             // video mdoe
             if (video_mode == VIDEO_MODE_NTSC) {
-                strcpy(&video_char_buffer[5+3][30], "NTSC");
+                strcpy((char *)&video_char_buffer[5+3][30], "NTSC");
             }else{
-                strcpy(&video_char_buffer[5+3][30], "PAL");
+                strcpy((char *)&video_char_buffer[5+3][30], "PAL");
             }
             break;
 #endif
@@ -221,7 +237,7 @@ void video_render_blank(uint16_t line) {
     }
 }
 
-#include <libopencm3/stm32/spi.h>
+//#include <libopencm3/stm32/spi.h>
 
 void video_main_loop(void) {
     uint32_t page_to_fill;
@@ -229,8 +245,6 @@ void video_main_loop(void) {
     // endless loop
     while (1) {
         // store current page to render
-        //SPI_CR2(VIDEO_SPI_WHITE) = SPI_CR2(VIDEO_SPI_WHITE) | SPI_CR2_TXDMAEN;
-
         // is there a new line request?
         if (video_line.fill_request != VIDEO_BUFFER_FILL_REQUEST_IDLE) {
             #if VIDEO_DEBUG_ODD_EVEN
