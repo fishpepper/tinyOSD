@@ -25,8 +25,9 @@
 #define VIDEO_DEBUG_DURATION_TEXTLINE 0
 #define VIDEO_DEBUG_DURATION_ANIMATION 0
 
-#define VIDEO_RENDER_DEBUG_DATA 1
-#define VIDEO_RENDER_ADCVAL 0
+#define VIDEO_RENDER_DEBUG_DATA 0
+#define VIDEO_RENDER_ADCVAL     0
+#define VIDEO_RENDER_BARS       1
 
 #define VIDEO_BUFFER_WIDTH (2*38) //66 // max should be ~68
 #define VIDEO_CHAR_BUFFER_WIDTH  35  // THIS SHALL NEVER EXCEED VIDEO_BUFFER_WIDTH/2-3 !
@@ -51,7 +52,8 @@
 
 void video_init(void);
 void video_main_loop(void);
-
+void video_put_uint8(uint8_t *buffer, uint8_t val);
+void video_put_uint16(uint8_t *buffer, uint16_t val);
 
 #define VIDEO_BLANK_LEVEL_DETECTION_MAX_MV 600
 
@@ -94,6 +96,9 @@ typedef struct {
 } video_line_t;
 
 extern video_line_t video_line;
+extern volatile uint16_t video_stats_line_start;
+extern volatile uint16_t video_stats_line_usage_min;
+extern volatile uint16_t video_stats_line_usage_max;
 
 //extern volatile uint16_t video_buffer[2][2][VIDEO_BUFFER_WIDTH/2];
 //extern volatile uint32_t video_buffer_fill_request;
@@ -104,7 +109,7 @@ extern volatile uint32_t video_uart_checksum_err;
 extern volatile uint32_t video_field;
 //extern volatile uint32_t video_buffer_page;
 
-#define TIMER_CLOCKS_PER_US                      (48000000 / 1000000)
+#define TIMER_CLOCKS_PER_US                      (CPU_CLOCK / 1000000)
 #define _US_TO_CLOCKS(__us)                      ((uint32_t)((__us) * TIMER_CLOCKS_PER_US))
 
 #define VIDEO_LINE_LEN            63.556  // us

@@ -18,6 +18,7 @@
 */
 
 #include "clocksource.h"
+#include "config.h"
 #include <libopencm3/cm3/nvic.h>
 #include <libopencm3/cm3/systick.h>
 #include <libopencm3/stm32/rcc.h>
@@ -27,8 +28,64 @@ uint32_t rcc_timer_frequency;
 
 void clocksource_init(void) {
     // set clock source
+#if CPU_CLOCK == 48000000
     clocksource_hse_in_8_out_48();
+#elif CPU_CLOCK == 72000000
+    clocksource_hse_in_8_out_72();
+#else
+    ERROR: unsupported clock freq requested
+#endif
 }
+
+void clocksource_hse_in_8_out_72(void) {
+    // see RM0366 p. 92 for clock tree
+
+    // enable internal high-speed oscillator
+    // we will run from hsi during setup
+    rcc_osc_on(RCC_HSI);
+    rcc_wait_for_osc_ready(RCC_HSI);
+
+    // Select HSI as SYSCLK source.
+    rcc_set_sysclk_source(RCC_CFGR_SW_HSI);
+
+    // Enable external high-speed oscillator 8MHz
+    rcc_osc_on(RCC_HSE);
+    rcc_wait_for_osc_ready(RCC_HSE);
+
+    // disable pll during setup (madatory!)
+    rcc_osc_off(RCC_PLL);
+    rcc_wait_for_osc_not_ready(RCC_PLL);
+
+    // set up HSE 8MHz to PLL out 72 MHz
+    // PL OUT = HSE/1 * 9 = 72
+    rcc_set_prediv(RCC_CFGR2_PREDIV_NODIV);
+    rcc_set_pll_source(RCC_CFGR_PLLSRC_HSE_PREDIV);
+    rcc_set_pll_multiplier(RCC_CFGR_PLLMUL_PLL_IN_CLK_X9);
+
+    // start pll
+    rcc_osc_on(RCC_PLL);
+    rcc_wait_for_osc_ready(RCC_PLL);
+
+    // set up prescalers for AHB, ADC, ABP1, ABP2.
+    // do this before setting sysclock source to PLL
+    // otherwise we might run the peripherals at a frequency
+    // that exceeds the limits
+    rcc_set_hpre(RCC_CFGR_HPRE_DIV_NONE);    // 72MHz (max: 72)
+    rcc_set_ppre2(RCC_CFGR_PPRE2_DIV_2);     // 36MHz (max: 72)
+    rcc_set_ppre1(RCC_CFGR_PPRE1_DIV_2);     // 36MHz (max: 36)
+
+    // set flash waitstates
+    flash_set_ws(FLASH_ACR_PRFTBE | FLASH_ACR_LATENCY_2WS);
+
+    // finally select PLL as SYSCLK source
+    rcc_set_sysclk_source(RCC_CFGR_SW_PLL);
+
+    // set the peripheral clock frequencies used */
+    rcc_ahb_frequency  = 72000000;
+    rcc_apb1_frequency = 36000000;
+    rcc_apb2_frequency = 36000000;
+}
+
 
 void clocksource_hse_in_8_out_48(void) {
     // see RM0366 p. 92 for clock tree

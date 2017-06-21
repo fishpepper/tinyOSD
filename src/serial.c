@@ -225,7 +225,7 @@ void serial_process(void) {
                                 // make sure not to exceed the buffer
                                 if ((p + len) < VIDEO_CHAR_BUFFER_WIDTH * VIDEO_CHAR_BUFFER_HEIGHT){
                                     // safe to process
-                                    uint8_t *data_buf_ptr = &serial_protocol_frame_data[1];
+                                    uint8_t *data_buf_ptr = (uint8_t*)&serial_protocol_frame_data[1];
                                     uint8_t *char_buf_ptr = &video_char_buffer[0][0];
 
                                     // add adress offset:

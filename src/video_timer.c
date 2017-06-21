@@ -185,15 +185,11 @@ void COMP123_IRQHandler(void) {
                 // even
                 video_line.active_line = 14;
             }
-
-
         } else if (pulse_len < VIDEO_SYNC_HSYNC_MAX) {
+            // store start ts of next line
+            video_stats_line_start = current_compare_value;
+
             // this is longer than a short sync and not a broad sync
-
-          //  dma_disable_channel(VIDEO_DMA_WHITE, VIDEO_DMA_CHANNEL_WHITE);
-            // video_dma_trigger();
-
-            //debug_put_uint16((current_compare_value + _US_TO_CLOCKS(10)) - TIM1_CNT ); debug_put_newline();
             current_compare_value += _US_TO_CLOCKS(6+0);
 
             //uint32_t ccval = current_compare_value +100; // _US_TO_CLOCKS(15);

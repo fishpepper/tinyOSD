@@ -302,6 +302,36 @@ void video_render_sticks(uint8_t page_to_fill, uint16_t visible_line) {
 }
 #endif
 
+
+void video_render_grey_bars(uint8_t page_to_fill, uint16_t visible_line) {
+    uint16_t color = visible_line / 36;
+
+    bool render_bars = ((color > 5) && (color < 5+8));
+
+    if (render_bars) {
+        video_io_set_level_mv(WHITE, 100*(color - 4));
+        if ((color - 4) > 4){
+            video_io_set_level_mv(BLACK, 250);
+        }else{
+            video_io_set_level_mv(BLACK, 1100);
+        }
+
+        if (color < VIDEO_CHAR_BUFFER_HEIGHT) {
+            //video_put_uint16(&video_char_buffer[color][16], 100*(color-5));
+            strcpy((char *)&video_char_buffer[color][16], "TEST 1234");
+        }
+    }
+
+    video_render_text(page_to_fill, visible_line);
+
+    if (render_bars) {
+        for (uint8_t i=3; i<13; i++){
+            video_line.buffer[WHITE][page_to_fill][i] = 0xFFFF;
+            //video_line.buffer[BLACK][page_to_fill][i] = 0xFFFF;
+        }
+    }
+}
+
 void video_render_pilot_logo(uint8_t page_to_fill, uint16_t visible_line) {
     // calc current row (overflows if visible_line < logo start -> big integer)
     uint16_t row = visible_line - VIDEO_START_PILOT_LOGO_Y;

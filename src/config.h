@@ -39,7 +39,7 @@
     #define VIDEO_DAC_VCC       CPU_VOLTAGE
 #endif
 
-
+#define CPU_CLOCK 48000000
 
 #define VIDEO_LEVEL_TERMINATION_R     75.0
 #define VIDEO_LEVEL_R2R_1R           169.0

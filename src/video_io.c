@@ -33,7 +33,6 @@ static void video_io_init_gpio(void);
 static void video_io_init_dac(void);
 static void video_io_set_dac_value_raw(uint16_t taregt);
 
-static void video_io_set_level_mv(uint8_t port, uint16_t mv);
 static void video_io_set_white_level_raw(uint8_t byte);
 static void video_io_set_black_level_raw(uint8_t byte);
 
@@ -111,23 +110,27 @@ static void video_io_init_gpio(void) {
     gpio_set(VIDEO_MUX_BLACK_GPIO, VIDEO_MUX_BLACK_DAC1);
 }
 
-void video_io_set_level(uint8_t port, uint8_t level){
-    // input: 0...100 for white level in percent
+
+
+void video_io_set_level_mv(uint8_t port, uint16_t mv){
+    ///debug_function_call_u16(mv);
+
+    // limit to pal levels:
     //   0 % = video signal min + black level
     // 100 % = video signal min + black level + 700mV
     // black level is 300mV
-    uint16_t v_black = video_min_level + 300;
-    uint16_t v_white = v_black + 700;
-    // we allow setting in between these ratios:
-    debug("video_io: v_min   = "); debug_put_uint16(video_min_level); debug_put_newline();
-    debug("video_io: v_black = "); debug_put_uint16(v_black); debug_put_newline();
-    debug("video_io: v_white = "); debug_put_uint16(v_white); debug_put_newline();
+    // allow a bit more than 300/1000 mV offsets (+50mV)
+    uint16_t v_black = video_min_level + 250;
+    uint16_t v_white = v_black + 750;
+    // we allow setting in between these
+    ///debug("video_io: v_black = "); debug_put_uint16(v_black); debug_put_newline();
+    ///debug("video_io: v_white = "); debug_put_uint16(v_white); debug_put_newline();
 
-}
+    // limit to be inside allowed range
+    mv = max(v_black, mv);
+    mv = min(v_white, mv);
+    //debug("video_io: v_set   = "); debug_put_uint16(mv); debug_put_newline();
 
-
-static void video_io_set_level_mv(uint8_t port, uint16_t mv){
-    debug_function_call_u16(mv);
     // input: target voltage in mv
     // the output is terminated with 75 Ohm
     // minimum 1/Rtotal = 1/8R + 1/4R + 1/2R + 1/R
@@ -190,7 +193,7 @@ static void video_io_init_dac(void) {
     // start with disabled dac
     dac_disable(CHANNEL_1);
     dac_disable_waveform_generation(CHANNEL_1);
-   // dac_buffer_disable(CHANNEL_1);
+    //dac_buffer_disable(CHANNEL_1);
 
     // set default value and enable output
     video_io_set_dac_value_mv(0);

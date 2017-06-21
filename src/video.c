@@ -24,6 +24,7 @@
 #include "video_timer.h"
 #include "debug.h"
 #include "timeout.h"
+#include "macros.h"
 #include "led.h"
 #include "adc.h"
 #include "serial.h"
@@ -31,9 +32,10 @@
 #include <stdio.h>
 #include <string.h>
 
+#include <libopencm3/stm32/timer.h>
 #include <libopencm3/stm32/comparator.h>
 
-static void video_put_uint16(uint8_t *buffer, uint16_t val);
+
 static void video_render_blank(uint16_t line);
 static void video_detect_blank_level(void);
 static void video_detect_pal_ntsc(void);
@@ -54,6 +56,9 @@ uint8_t video_armed_state;
 uint8_t video_mode;
 uint16_t video_min_level;
 
+volatile uint16_t video_stats_line_start;
+volatile uint16_t video_stats_line_usage_min;
+volatile uint16_t video_stats_line_usage_max;
 
 void video_init(void) {
     debug_function_call();
@@ -177,8 +182,7 @@ static void video_detect_blank_level(void) {
             sync_level = min_level + 0.4*(mv - min_level);
             break;
         }
-        /*debug("tc "); debug_put_uint16(mv); debug("="); debug_put_uint16(line_counter);debug_put_newline();
-        timeout_delay_ms(100);*/
+        debug("tc "); debug_put_uint16(mv); debug("="); debug_put_uint16(line_counter);debug_put_newline();
     }
     video_min_level = min_level;
     debug("video: min  level = "); debug_put_uint16(video_min_level); debug_put_newline();
@@ -231,13 +235,27 @@ void video_render_blank(uint16_t line) {
                 strcpy((char *)&video_char_buffer[5+3][30], "PAL");
             }
             break;
-#endif
+
         case(VIDEO_FIRST_ACTIVE_LINE-5):
+            // stats: line length
+            {
+            uint8_t *buf = &video_char_buffer[5+4][29];
+            //video_put_uint8(buf+0, video_stats_line_usage_min);
+            strcpy((char *)buf, "CPU");
+            video_put_uint8(buf+3, video_stats_line_usage_max);
+            //*(buf+3) = '-';
+
+            // reset per frame statistics
+            video_stats_line_usage_min = 0xFFFF;
+            video_stats_line_usage_max = 0x0000;
+            }
             break;
+
+
+#endif
     }
 }
 
-//#include <libopencm3/stm32/spi.h>
 
 void video_main_loop(void) {
     uint32_t page_to_fill;
@@ -262,17 +280,22 @@ void video_main_loop(void) {
                 //visible line -> render data
                 uint16_t visible_line = video_line.active_line - VIDEO_FIRST_ACTIVE_LINE;
 
-#if  VIDEO_RENDER_ADCVAL
-                if (0) {
+#if VIDEO_RENDER_BARS
+                // render debug bars:
+                video_render_grey_bars(page_to_fill, visible_line);
+
+#elif VIDEO_RENDER_ADCVAL
+                // render adc data
 #else
+                // normal ui
                 if (((video_armed_state & (1<<3)) == 0) &&
                      (visible_line >= VIDEO_START_LINE_ANIMATION) &&
-                     (visible_line <= VIDEO_END_LINE_ANIMATION)
+                     (visible_line < VIDEO_END_LINE_ANIMATION)
                    ) {
-#endif
                     // never armed and inside ani window -> show animation
                     video_render_animation(page_to_fill, visible_line);
                 } else {
+
                     video_render_text(page_to_fill, visible_line);
 
                     // render some more data when armed
@@ -282,6 +305,7 @@ void video_main_loop(void) {
                         video_render_pilot_logo(page_to_fill, visible_line);
                     }
                 }
+#endif
             }
 
             // make sure the last 4 bytes are always disabled
@@ -336,6 +360,16 @@ void video_main_loop(void) {
             // clear request
             video_line.fill_request = VIDEO_BUFFER_FILL_REQUEST_IDLE;
 
+            // do some statistics, calculate how much of the line we used for rendering:
+            uint16_t ts_rendering_done = TIM_CNT(TIM1);
+
+            // keep track of rendering time:
+            uint16_t last_duration    = ts_rendering_done - video_stats_line_start;
+            uint32_t usage = (100 * (uint32_t)last_duration) /  _US_TO_CLOCKS(VIDEO_LINE_LEN);
+
+            video_stats_line_usage_min  = min(video_stats_line_usage_min, usage);
+            video_stats_line_usage_max  = min(100, max(video_stats_line_usage_max, usage));
+
         }
         // process incoming data
         serial_process();
@@ -344,7 +378,7 @@ void video_main_loop(void) {
 
 
 // output an unsigned 16-bit number to uart
-static void video_put_uint16(uint8_t *buffer, uint16_t val) {
+void video_put_uint16(uint8_t *buffer, uint16_t val) {
     uint8_t tmp;
     uint8_t l = 0;
     uint32_t mul;
@@ -359,6 +393,29 @@ static void video_put_uint16(uint8_t *buffer, uint16_t val) {
         }
         if ((l == 0) && (tmp == '0') && (mul!=1)) {
                 *buffer++ = '0';
+        } else {
+                *buffer++ = tmp;
+        }
+    }
+}
+
+
+// output an unsigned 8-bit number to uart
+void video_put_uint8(uint8_t *buffer, uint8_t val) {
+    uint8_t tmp;
+    uint8_t l = 0;
+    uint32_t mul;
+    // loop unrolling is better(no int16 arithmetic)
+    for (mul = 100; mul>0; mul = mul/10) {
+        l = 0;
+        tmp = '0';
+        while (val >= mul) {
+                val -= mul;
+                tmp++;
+                l = 1;
+        }
+        if ((l == 0) && (tmp == '0') && (mul!=1)) {
+                *buffer++ = ' ';
         } else {
                 *buffer++ = tmp;
         }
