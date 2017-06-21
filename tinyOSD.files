@@ -735,3 +735,7 @@ src/video_render.c
 src/video_render.h
 src/video_io.h
 src/video_io.c
+src/spi.c
+src/spi.h
+src/soft_spi.c
+src/soft_spi.h

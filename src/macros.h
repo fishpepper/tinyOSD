@@ -51,8 +51,10 @@
 #define TIMER_SET_DMA_ON_COMPARE_EVENT(_tim) {  TIM_CR2(_tim) &= ~TIM_CR2_CCDS; }
 #define TIMER_CLEAR_DMA_ON_COMPARE_EVENT(_tim) {  TIM_CR2(_tim) |= TIM_CR2_CCDS; }
 
-#define GPIO_SET(__port, __gpios)   { GPIO_BSRR(__port) = __gpios; }
-#define GPIO_CLEAR(__port, __gpios) { GPIO_BSRR(__port) = (__gpios)<<16; }
+#define GPIO_SET(__port, __gpios)    { GPIO_BSRR(__port) = __gpios; }
+#define GPIO_CLEAR(__port, __gpios)  { GPIO_BSRR(__port) = (__gpios)<<16; }
+#define GPIO_TOGGLE(__port, __gpios) { uint32_t p = GPIO_ODR(__port); \
+    GPIO_BSRR(__port) = ((p & (__gpios)) << 16) | (~p & (__gpios)); }
 
 
 

@@ -40,6 +40,9 @@ void video_io_init(void) {
     video_io_init_rcc();
     video_io_init_gpio();
     video_io_init_dac();
+
+    video_io_set_level_mv(WHITE, 800);
+    video_io_set_level_mv(BLACK,   0);
 }
 
 
@@ -86,28 +89,28 @@ static void video_io_init_gpio(void) {
     //gpio_mode_setup(VIDEO_WHITE_GPIO, GPIO_MODE_OUTPUT, GPIO_PUPD_NONE, VIDEO_WHITE_MOSI_PIN);
     gpio_set_af(VIDEO_WHITE_GPIO, VIDEO_WHITE_MOSI_AF, VIDEO_WHITE_MOSI_PIN);
     gpio_set_output_options(VIDEO_WHITE_GPIO, GPIO_OTYPE_PP, GPIO_OSPEED_50MHZ, VIDEO_WHITE_MOSI_PIN);
-    gpio_clear(VIDEO_WHITE_GPIO, VIDEO_WHITE_MOSI_PIN);
+    GPIO_CLEAR(VIDEO_WHITE_GPIO, VIDEO_WHITE_MOSI_PIN);
 
     // set spi mosi to output
     gpio_mode_setup(VIDEO_BLACK_GPIO, GPIO_MODE_AF, GPIO_PUPD_NONE, VIDEO_BLACK_MOSI_PIN);
     //gpio_mode_setup(VIDEO_BLACK_GPIO, GPIO_MODE_OUTPUT, GPIO_PUPD_NONE, VIDEO_BLACK_MOSI_PIN);
     gpio_set_af(VIDEO_BLACK_GPIO, VIDEO_BLACK_MOSI_AF, VIDEO_BLACK_MOSI_PIN);
     gpio_set_output_options(VIDEO_BLACK_GPIO, GPIO_OTYPE_PP, GPIO_OSPEED_50MHZ, VIDEO_BLACK_MOSI_PIN);
-    gpio_clear(VIDEO_BLACK_GPIO, VIDEO_BLACK_MOSI_PIN);
+    GPIO_CLEAR(VIDEO_BLACK_GPIO, VIDEO_BLACK_MOSI_PIN);
 
     // set WHITE DAC to output:
     uint32_t pins = VIDEO_MUX_WHITE_DAC0 | VIDEO_MUX_WHITE_DAC1 | VIDEO_MUX_WHITE_DAC2 | VIDEO_MUX_WHITE_DAC3;
     gpio_mode_setup(VIDEO_MUX_WHITE_GPIO, GPIO_MODE_OUTPUT, GPIO_PUPD_NONE, pins);
-    gpio_clear(VIDEO_MUX_WHITE_GPIO, pins);
-    gpio_set(VIDEO_MUX_WHITE_GPIO, VIDEO_MUX_WHITE_DAC2);
-    gpio_set(VIDEO_MUX_WHITE_GPIO, VIDEO_MUX_WHITE_DAC1);
-    gpio_set(VIDEO_MUX_WHITE_GPIO, VIDEO_MUX_WHITE_DAC0);
+    GPIO_CLEAR(VIDEO_MUX_WHITE_GPIO, pins);
+    //GPIO_SET(VIDEO_MUX_WHITE_GPIO, VIDEO_MUX_WHITE_DAC2);
+    //GPIO_SET(VIDEO_MUX_WHITE_GPIO, VIDEO_MUX_WHITE_DAC1);
+    //GPIO_SET(VIDEO_MUX_WHITE_GPIO, VIDEO_MUX_WHITE_DAC0);
 
     // set BLACK DAC to output:
     pins = VIDEO_MUX_BLACK_DAC0 | VIDEO_MUX_BLACK_DAC1 | VIDEO_MUX_BLACK_DAC2 | VIDEO_MUX_BLACK_DAC3;
     gpio_mode_setup(VIDEO_MUX_BLACK_GPIO, GPIO_MODE_OUTPUT, GPIO_PUPD_NONE, pins);
-    gpio_clear(VIDEO_MUX_BLACK_GPIO, pins);
-    gpio_set(VIDEO_MUX_BLACK_GPIO, VIDEO_MUX_BLACK_DAC1);
+    GPIO_CLEAR(VIDEO_MUX_BLACK_GPIO, pins);
+    //GPIO_SET(VIDEO_MUX_BLACK_GPIO, VIDEO_MUX_BLACK_DAC1);
 }
 
 
@@ -115,21 +118,18 @@ static void video_io_init_gpio(void) {
 void video_io_set_level_mv(uint8_t port, uint16_t mv){
     ///debug_function_call_u16(mv);
 
-    // limit to pal levels:
-    //   0 % = video signal min + black level
-    // 100 % = video signal min + black level + 700mV
-    // black level is 300mV
-    // allow a bit more than 300/1000 mV offsets (+50mV)
-    uint16_t v_black = video_min_level + 250;
-    uint16_t v_white = v_black + 750;
-    // we allow setting in between these
-    ///debug("video_io: v_black = "); debug_put_uint16(v_black); debug_put_newline();
     ///debug("video_io: v_white = "); debug_put_uint16(v_white); debug_put_newline();
 
-    // limit to be inside allowed range
-    mv = max(v_black, mv);
-    mv = min(v_white, mv);
+    // limit to be inside allowed range of 0..700 (+100) mV
+    mv = min(800, mv);
+
     //debug("video_io: v_set   = "); debug_put_uint16(mv); debug_put_newline();
+
+    // add offset to pal levels:
+    //   0 % = video signal min + black level
+    // 100 % = video signal min + black level + 700mV
+    // allow for a bit more, set black level to 250mV, max is 250+800 = 1050mV
+    mv = mv + video_min_level + 250;
 
     // input: target voltage in mv
     // the output is terminated with 75 Ohm

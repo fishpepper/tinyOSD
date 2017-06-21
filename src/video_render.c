@@ -29,6 +29,7 @@
 #include "pilotlogo.h"
 
 #include "font.h"
+#include "video_io.h"
 
 #include <string.h>
 
@@ -309,11 +310,11 @@ void video_render_grey_bars(uint8_t page_to_fill, uint16_t visible_line) {
     bool render_bars = ((color > 5) && (color < 5+8));
 
     if (render_bars) {
-        video_io_set_level_mv(WHITE, 100*(color - 4));
+        video_io_set_level_mv(WHITE, 100*(color - 6));
         if ((color - 4) > 4){
-            video_io_set_level_mv(BLACK, 250);
+            video_io_set_level_mv(BLACK, 0);
         }else{
-            video_io_set_level_mv(BLACK, 1100);
+            video_io_set_level_mv(BLACK, 800);
         }
 
         if (color < VIDEO_CHAR_BUFFER_HEIGHT) {

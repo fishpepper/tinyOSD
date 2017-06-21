@@ -22,12 +22,13 @@
 
 #include <libopencm3/stm32/gpio.h>
 #include "config.h"
+#include "macros.h"
 
 void led_init(void);
 
-#define led_on()     { gpio_set(LED_GPIO, LED_PIN); }
-#define led_off()    { gpio_clear(LED_GPIO, LED_PIN); }
+#define led_on()     { GPIO_TOGGLE(LED_GPIO, LED_PIN); }
+#define led_off()    { GPIO_CLEAR(LED_GPIO, LED_PIN); }
 #define led_set(__val)     { if (__val) { led_on(); }else{ led_off(); }}
-#define led_toggle() { gpio_toggle(LED_GPIO, LED_PIN); }
+#define led_toggle() { GPIO_TOGGLE(LED_GPIO, LED_PIN); }
 
 #endif  // LED_H_

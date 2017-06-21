@@ -24,6 +24,9 @@
 #include <libopencm3/stm32/rcc.h>
 #include <libopencm3/stm32/flash.h>
 
+static void clocksource_hse_in_8_out_72(void);
+static void clocksource_hse_in_8_out_48(void);
+
 uint32_t rcc_timer_frequency;
 
 void clocksource_init(void) {
@@ -37,7 +40,7 @@ void clocksource_init(void) {
 #endif
 }
 
-void clocksource_hse_in_8_out_72(void) {
+static void clocksource_hse_in_8_out_72(void) {
     // see RM0366 p. 92 for clock tree
 
     // enable internal high-speed oscillator
@@ -87,7 +90,7 @@ void clocksource_hse_in_8_out_72(void) {
 }
 
 
-void clocksource_hse_in_8_out_48(void) {
+static void clocksource_hse_in_8_out_48(void) {
     // see RM0366 p. 92 for clock tree
 
     // enable internal high-speed oscillator

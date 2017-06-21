@@ -17,12 +17,13 @@
     author: fishpepper <AT> gmail.com
 */
 
-#ifndef ADC_H_
-#define ADC_H_
+#ifndef SOFT_SPI_H_
+#define SOFT_SPI_H_
 
 #include <stdint.h>
 
-void adc_init(void);
-uint16_t adc_get_value(void);
+void soft_spi_init(void);
 
-#endif  // ADC_H_
+#define SOFT_SPI_CS_HI() {}
+
+#endif  // SOFT_SPI_H_

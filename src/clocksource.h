@@ -24,6 +24,5 @@
 extern uint32_t rcc_timer_frequency;
 
 void clocksource_init(void);
-void clocksource_hse_in_8_out_48(void);
 
 #endif  // CLOCKSOURCE_H_
