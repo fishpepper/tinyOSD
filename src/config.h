@@ -73,10 +73,11 @@
 
 
 
-#define SOFT_SPI_GPIO       GPIOA
-#define SOFT_SPI_PIN_MOSI   GPIO5
-#define SOFT_SPI_PIN_SCK    GPIO1
-#define SOFT_SPI_PIN_CS     GPIO0
+#define RTC6705_GPIO             GPIOA
+#define RTC6705_PIN_DATA         GPIO5
+#define RTC6705_PIN_DATA_PIN_ID  5
+#define RTC6705_PIN_SCK          GPIO1
+#define RTC6705_PIN_CS           GPIO0
 
 
 #define SERIAL_OVERRUN_DETECTION_DISABLED 1

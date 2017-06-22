@@ -739,3 +739,5 @@ src/spi.c
 src/spi.h
 src/soft_spi.c
 src/soft_spi.h
+src/rtc6705.c
+src/rtc6705.h

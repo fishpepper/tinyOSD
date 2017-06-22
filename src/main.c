@@ -26,6 +26,7 @@
 #include "video.h"
 #include "serial.h"
 #include "adc.h"
+#include "rtc6705.h"
 #include "macros.h"
 
 #include <stdlib.h>
@@ -79,6 +80,8 @@ clocksource_init();
     led_init();
 
     debug_init();
+
+    rtc6705_init();
 
     adc_init();
 
