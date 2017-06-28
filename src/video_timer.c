@@ -190,7 +190,7 @@ void COMP123_IRQHandler(void) {
             video_stats_line_start = current_compare_value;
 
             // this is longer than a short sync and not a broad sync
-            current_compare_value += _US_TO_CLOCKS(6+0);
+            current_compare_value += _US_TO_CLOCKS(6+1.5);
 
             //uint32_t ccval = current_compare_value +100; // _US_TO_CLOCKS(15);
             TIM_CCR1(TIM1) = current_compare_value;

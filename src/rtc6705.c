@@ -38,6 +38,15 @@ void rtc6705_init(void) {
     rtc6705_init_rcc();
     rtc6705_init_gpio();
 
+    // shift out some dummy clocks:
+    RTC6705_CS_HI();
+    for(uint8_t i=0; i<32; i++){
+        RTC6705_SCK_HI();
+        delay_us(1);
+        RTC6705_SCK_LO();
+        delay_us(1);
+    }
+
    for (uint8_t i=0; i<=0xF; i++){
        timeout_delay_ms(100);
        uint32_t res = rtc6705_transfer(i, RTC6705_COMMAND_READ, 0x0000);
@@ -46,14 +55,28 @@ void rtc6705_init(void) {
        debug_put_hex32(res); debug_put_newline();
    }
 
+    // wait for the rtc6705 to be ready
+    // TODO: find correct value?!
+    timeout_delay_ms(300);
+
    //F1 5740
    //
    // 2*(N*64+A)*20KHZ = 5740
    //
    // N = 2242, A=12
-   //rtc6705_transfer(0x01, RTC6705_COMMAND_WRITE, (2242<<7) + 12);
+   //rtc6705_transfer(0x01, RTC6705_COMMAND_WRITE, (2242<<7) | 12);
 
-   while(1);
+    //B4 5790
+    //
+    // 2*(N*64+A)*20KHZ = 5790
+    //
+    // N = 2261, A=46
+
+    rtc6705_transfer(0x00, RTC6705_COMMAND_WRITE, 0x190); // default, 8MHZ clock / 20khz spacing
+    rtc6705_transfer(0x01, RTC6705_COMMAND_WRITE, (2261<<7) + 46);
+
+
+  // while(1);
 }
 
 

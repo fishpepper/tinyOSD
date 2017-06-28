@@ -258,7 +258,6 @@ void video_main_loop(void) {
             led_set(video_line.active_line & 1);
             #endif
 
-
             page_to_fill = video_line.fill_request;
 
             // active or blank line?

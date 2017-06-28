@@ -50,9 +50,12 @@ void video_spi_dma_init(void) {
     video_spi_dma_init_dma();
 
     // fire DMA for the first time to have valid levels on the MOSI pins
-    debug("not sure if this works, testme\n");
+    //while(1){
+        debug("not sure if this works, testme\n");
     SPI_CR2(VIDEO_SPI_WHITE) |= SPI_CR2_TXDMAEN;
     SPI_CR2(VIDEO_SPI_BLACK) |= SPI_CR2_TXDMAEN;
+    //timeout_delay_ms(100);
+    //}
 }
 
 
