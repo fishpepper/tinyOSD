@@ -211,15 +211,27 @@ void serial_process(void) {
                     default:
                         break;
 
-                    case(0x00):
-                    case(0x01):
-                    case(0x02):
-                    case(0x03):
+                    case(TINYOSD_COMMAND_SET_STATUS):
+                        // SET STATUS 
+                        break;
+                    case(TINYOSD_COMMAND_FILL_SCREEN):
+                        // fill screen with given value
+                        for (uint8_t y=0; y<VIDEO_CHAR_BUFFER_HEIGHT; y++) {
+                            for (uint8_t x=0; x<VIDEO_CHAR_BUFFER_WIDTH; x++) {
+                                video_char_buffer[y][x] = serial_protocol_frame_data[0];
+                            }
+                        }
+                        break;
+                    
+                    case(TINYOSD_COMMAND_WRITE_PAGE_0):
+                    case(TINYOSD_COMMAND_WRITE_PAGE_1):
+                    case(TINYOSD_COMMAND_WRITE_PAGE_2):
+                    case(TINYOSD_COMMAND_WRITE_PAGE_3):
                         // thos cammands write to page 0, 1, 2, or 3
                         {
                             if (serial_protocol_frame_len >= 2) {
                                 // at least 1 byte command + 1 byte addressoffset + 1 data byte is required
-                                uint16_t p = (serial_protocol_frame_command << 8) | (serial_protocol_frame_data[0] & 0xFF);
+                                uint16_t p = ((serial_protocol_frame_command - TINYOSD_COMMAND_WRITE_PAGE_0) << 8) | (serial_protocol_frame_data[0] & 0xFF);
                                 uint8_t  len = serial_protocol_frame_len - 1;
 
                                 // make sure not to exceed the buffer
@@ -240,7 +252,7 @@ void serial_process(void) {
                         }
                         break;
 
-                    case(0x07):
+                    case(TINYOSD_COMMAND_WRITE_STICKDATA):
                         // set AETR stick pos
                         video_stick_data[0] = serial_protocol_frame_data[0];
                         video_stick_data[1] = serial_protocol_frame_data[1];

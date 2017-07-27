@@ -57,7 +57,7 @@ void rtc6705_init(void) {
 
     // wait for the rtc6705 to be ready
     // TODO: find correct value?!
-    timeout_delay_ms(300);
+    //timeout_delay_ms(300);
 
    //F1 5740
    //
@@ -76,6 +76,15 @@ void rtc6705_init(void) {
     rtc6705_transfer(0x01, RTC6705_COMMAND_WRITE, (2261<<7) + 46);
 
 
+//1953 = 5GHZ
+//2343 = 6 GHZ
+/*
+    for(uint16_t i=1953; i<2343; i+=(2243-1953)/60) {
+        timeout_delay_ms(2000);
+        rtc6705_transfer(0x00, RTC6705_COMMAND_WRITE, 0x190); // default, 8MHZ clock / 20khz spacing
+        rtc6705_transfer(0x01, RTC6705_COMMAND_WRITE, (i<<7));
+        debug_put_uint16(i); debug_put_newline();
+    }*/
   // while(1);
 }
 

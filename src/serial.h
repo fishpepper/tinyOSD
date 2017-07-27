@@ -25,4 +25,14 @@
 void serial_init(void);
 void serial_process(void);
 
+#define TINYOSD_COMMAND_SET_STATUS        0x00
+#define TINYOSD_COMMAND_FILL_SCREEN       0x01
+#define TINYOSD_COMMAND_WRITE_STICKDATA   0x07
+//
+//
+#define TINYOSD_COMMAND_WRITE_PAGE_0      0x10
+#define TINYOSD_COMMAND_WRITE_PAGE_1      0x11
+#define TINYOSD_COMMAND_WRITE_PAGE_2      0x12
+#define TINYOSD_COMMAND_WRITE_PAGE_3      0x13
+
 #endif  // SERIAL_H_
