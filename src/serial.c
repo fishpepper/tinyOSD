@@ -214,6 +214,7 @@ void serial_process(void) {
                     case(TINYOSD_COMMAND_SET_STATUS):
                         // SET STATUS 
                         break;
+
                     case(TINYOSD_COMMAND_FILL_SCREEN):
                         // fill screen with given value
                         for (uint8_t y=0; y<VIDEO_CHAR_BUFFER_HEIGHT; y++) {
