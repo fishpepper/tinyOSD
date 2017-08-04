@@ -31,8 +31,8 @@ void serial_process(void);
 #define PROTOCOL_HEADER                   0x80
 
 #define PROTOCOL_CMD_SET_REGISTER         0x0
-#define PROTOCOL_CMD_FILL_REGION          0x2
-#define PROTOCOL_CMD_WRITE                0x1
+#define PROTOCOL_CMD_FILL_REGION          0x1
+#define PROTOCOL_CMD_WRITE                0x2
 // 0x2
 // 0x3
 // 0x4

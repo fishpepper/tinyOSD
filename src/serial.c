@@ -141,10 +141,12 @@ void serial_process(void) {
     if (serial_protocol_data_index < PROTOCOL_FRAME_MAX_LEN){
         // store data
         serial_protocol_data[serial_protocol_data_index++] = rx;
-        // update crc
-        CRC8_UPDATE(serial_protocol_crc, rx);
     }
 
+    // update crc
+    CRC8_UPDATE(serial_protocol_crc, rx);
+
+static uint8_t dbg=0;
     switch (serial_protocol_state) {
         default:
         case(PROTOCOL_STATE_IDLE):
@@ -152,7 +154,9 @@ void serial_process(void) {
             if (rx == PROTOCOL_HEADER) {
                 // new frame
                 serial_protocol_state = PROTOCOL_STATE_DEVICE_CMD;
-                serial_protocol_crc = CRC8_FROM_HEADER;
+                CRC8_INIT(serial_protocol_crc, 0);
+                CRC8_UPDATE(serial_protocol_crc, rx);
+//                serial_protocol_crc = CRC8_FROM_HEADER;
                 serial_protocol_data_index = 0;
             }
             break;
@@ -223,6 +227,7 @@ void serial_process(void) {
                 // [0]        = command
                 // [1..(n-1)] = data
                 serial_protocol_process_data();
+                serial_protocol_state = PROTOCOL_STATE_IDLE;
             } else {
                 // crc error! 
                 video_uart_checksum_err++;
@@ -272,6 +277,16 @@ void serial_protocol_process_data(void) {
             uint8_t width = *data++;
             uint8_t height = *data++;
             uint8_t value = *data;
+            /*while (height--){
+                if (y >= VIDEO_CHAR_BUFFER_HEIGHT) return;
+                uint8_t todo = width;
+                while (todo--) {
+                    if (x >= VIDEO_CHAR_BUFFER_WIDTH) return;
+                    video_char_buffer[y][x] = value;
+                    x++;
+                }
+                y++;
+            }*/
             break;
         }
 
@@ -279,7 +294,11 @@ void serial_protocol_process_data(void) {
         {
             // set single character
             uint8_t x = *data++;
-            uint8_t y = *data;
+            uint8_t y = *data++;
+            uint8_t value = *data;
+            if (x >= VIDEO_CHAR_BUFFER_WIDTH) return;
+            if (y >= VIDEO_CHAR_BUFFER_HEIGHT) return;
+            video_char_buffer[y][x] = value;
             break;
         }
 

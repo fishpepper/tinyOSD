@@ -8,7 +8,7 @@
 
 
 //#define BOARD CAMOSD_VM275
-#define BOARD EVALBOARD
+#define BOARD CAMOSD_VM275
 
 #if (BOARD == CAMOSD_VM275)
     // vm275
