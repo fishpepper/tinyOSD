@@ -35,18 +35,15 @@ static void serial_init_gpio(void);
 static void serial_init_rcc(void);
 static void serial_init_uart(void);
 
+static void serial_protocol_process_data(void);
+static void serial_protocol_init(void);
 
-enum serial_protocol_state_t {
-    SERIAL_PROTOCOL_STATE_IDLE = 0,
-    SERIAL_PROTOCOL_STATE_LEN,
-    SERIAL_PROTOCOL_STATE_COMMAND,
-    SERIAL_PROTOCOL_STATE_DATA,
-    SERIAL_PROTOCOL_STATE_CHECKSUM,
-} serial_protocol_state;
-
-#define SERIAL_PROTOCOL_HEADER 0x80
-
-#define SERIAL_PROTOCOL_FRAME_BUFFER_SIZE 64
+#define PROTOCOL_STATE_IDLE       0x00
+#define PROTOCOL_STATE_DEVICE_CMD 0x10
+#define PROTOCOL_STATE_COMMAND    0x20
+#define PROTOCOL_STATE_DATA_BYTE  0x30
+#define PROTOCOL_STATE_DATA       0x40
+#define PROTOCOL_STATE_CRC        0xF0
 
 void serial_init(void) {
     debug_function_call();
@@ -55,7 +52,7 @@ void serial_init(void) {
     serial_init_gpio();
     serial_init_uart();
 
-    serial_protocol_state = SERIAL_PROTOCOL_STATE_IDLE;
+    serial_protocol_init();
 }
 
 void serial_init_rcc(void) {
@@ -104,12 +101,16 @@ void serial_init_uart(void) {
     usart_enable(SERIAL_UART);
 }
 
-static volatile uint8_t  serial_protocol_frame_crc;
-static volatile uint8_t  serial_protocol_frame_len;
-static volatile uint8_t  serial_protocol_frame_command;
-static volatile uint8_t  serial_protocol_frame_data_todo;
-static volatile uint8_t  serial_protocol_frame_data[SERIAL_PROTOCOL_FRAME_BUFFER_SIZE];
-static volatile uint8_t *serial_protocol_frame_data_ptr;
+static volatile uint8_t  serial_protocol_crc;
+
+static uint8_t serial_protocol_data[PROTOCOL_FRAME_MAX_LEN];
+static uint8_t serial_protocol_data_index;
+static uint8_t serial_protocol_data_count;
+static uint8_t serial_protocol_state;
+
+static void serial_protocol_init(void) {
+    serial_protocol_state = PROTOCOL_STATE_IDLE;
+}
 
 // process serial datastream
 // this uses a very simple protocol:
@@ -137,76 +138,222 @@ void serial_process(void) {
     // ok, new data available, read it
     uint8_t rx = USART_RDR(SERIAL_UART);
 
-    // update crc
-    CRC8_UPDATE(serial_protocol_frame_crc, rx);
+    if (serial_protocol_data_index < PROTOCOL_FRAME_MAX_LEN){
+        // store data
+        serial_protocol_data[serial_protocol_data_index++] = rx;
+        // update crc
+        CRC8_UPDATE(serial_protocol_crc, rx);
+    }
 
     switch (serial_protocol_state) {
         default:
-        case(SERIAL_PROTOCOL_STATE_IDLE):
+        case(PROTOCOL_STATE_IDLE):
             // look for SOF
-            if (rx == SERIAL_PROTOCOL_HEADER) {
+            if (rx == PROTOCOL_HEADER) {
                 // new frame
-                 serial_protocol_state = SERIAL_PROTOCOL_STATE_LEN;
-                 CRC8_INIT(serial_protocol_frame_crc, 0);
-                 CRC8_UPDATE(serial_protocol_frame_crc, rx);
+                serial_protocol_state = PROTOCOL_STATE_DEVICE_CMD;
+                serial_protocol_crc = CRC8_FROM_HEADER;
+                serial_protocol_data_index = 0;
             }
             break;
 
-        case(SERIAL_PROTOCOL_STATE_LEN):
-            // fetch len
-            serial_protocol_frame_len = rx;
-
-            if (serial_protocol_frame_len == 0) {
-                // invalid, ignore
-                serial_protocol_state = SERIAL_PROTOCOL_STATE_IDLE;
-                break;
-            } else if (serial_protocol_frame_len >= SERIAL_PROTOCOL_FRAME_BUFFER_SIZE) {
-                // invalid as well
-                if (rx == SERIAL_PROTOCOL_HEADER) {
-                    // this could be a new header
-                    CRC8_INIT(serial_protocol_frame_crc, 0);
-                    CRC8_UPDATE(serial_protocol_frame_crc, rx);
-                    // stay in this state and abort
-                    break;
-                } else {
-                    // abort
-                    serial_protocol_state = SERIAL_PROTOCOL_STATE_IDLE;
-                    break;
-                }
+        case(PROTOCOL_STATE_DEVICE_CMD):
+            if (((rx >> 4) & 0xF) == PROTOCOL_DEVICE_OSD) {
+                // valid device id
+                serial_protocol_state = PROTOCOL_STATE_COMMAND + (rx & 0x0F);
             } else {
-                // valid data
-                serial_protocol_state = SERIAL_PROTOCOL_STATE_COMMAND;
+                // invalid device type -> abort
+                if (rx == PROTOCOL_HEADER) {
+                    serial_protocol_crc = CRC8_FROM_HEADER;
+                    serial_protocol_data_index = 0;
+                } else {
+                    serial_protocol_state = PROTOCOL_STATE_IDLE;
+                }
             }
             break;
 
-        case(SERIAL_PROTOCOL_STATE_COMMAND):
-            // fetch data blob
-            serial_protocol_frame_command = rx;
-
-            // set data ptr
-            serial_protocol_frame_data_todo = serial_protocol_frame_len;
-            serial_protocol_frame_data_ptr  = &serial_protocol_frame_data[0];
-
-            // update state
-            serial_protocol_state = SERIAL_PROTOCOL_STATE_DATA;
+        // 2 byte commands:
+        case(PROTOCOL_STATE_COMMAND + PROTOCOL_CMD_SET_REGISTER):
+            // [HEADER] [DEV+CMD] [REGISTER:8] [VALUE:8] [CRC:8]
+            serial_protocol_data_count = 2-1;
+            serial_protocol_state = PROTOCOL_STATE_DATA;
             break;
 
-        case(SERIAL_PROTOCOL_STATE_DATA):
-            *serial_protocol_frame_data_ptr++ = rx;
-            serial_protocol_frame_data_todo--;
+        // 3 byte commands:
+        case(PROTOCOL_STATE_COMMAND + PROTOCOL_CMD_WRITE):
+            // [HEADER] [DEV+CMD] [X:8] [Y:8] [VALUE:8] [CRC:8]
+            serial_protocol_data_count = 3-1;
+            serial_protocol_state = PROTOCOL_STATE_DATA;
+            break;
 
-            // len testing:
-            if (!(serial_protocol_frame_data_todo)) {
-                // finished with this buffer
-                serial_protocol_state = SERIAL_PROTOCOL_STATE_CHECKSUM;
+        // 5 byte commands:
+        case(PROTOCOL_STATE_COMMAND + PROTOCOL_CMD_FILL_REGION):
+            // [HEADER] [DEV+CMD] [X:8] [Y:8] [WIDTH:8] [HEIGHT:8] [VALUE:8] [CRC:8]
+            serial_protocol_data_count = 5-1;
+            serial_protocol_state = PROTOCOL_STATE_DATA;
+            break;
+
+        // variable length commands
+        case(PROTOCOL_STATE_COMMAND + PROTOCOL_CMD_WRITE_BUFFER_H):
+        case(PROTOCOL_STATE_COMMAND + PROTOCOL_CMD_WRITE_BUFFER_V):
+        case(PROTOCOL_STATE_COMMAND + PROTOCOL_CMD_SPECIAL):
+            // [0x80] [DEV+CMD] [LEN] [LEN*DATA] [CRC:8] 
+            if ((rx == 0) || (rx > (PROTOCOL_FRAME_MAX_LEN-2))) {
+                // not allowed
+                serial_protocol_state = PROTOCOL_STATE_IDLE;
+            } else {
+                serial_protocol_data_count = rx;
+                serial_protocol_state = PROTOCOL_STATE_DATA;
             }
             break;
 
-        case(SERIAL_PROTOCOL_STATE_CHECKSUM):
-            if (serial_protocol_frame_crc == 0) {
+        // slurp in data
+        case(PROTOCOL_STATE_DATA):
+            serial_protocol_data_count--;
+            if (!serial_protocol_data_count) {
+                serial_protocol_state = PROTOCOL_STATE_CRC;
+            }
+            break;
+
+        // finish data receiption
+        case(PROTOCOL_STATE_CRC):
+            // test crc
+            if (serial_protocol_crc == 0) {
                 // valid data!
                 // [0]        = command
                 // [1..(n-1)] = data
+                serial_protocol_process_data();
+            } else {
+                // crc error! 
+                video_uart_checksum_err++;
+                if (rx == PROTOCOL_HEADER) {
+                    serial_protocol_crc = CRC8_FROM_HEADER;
+                    serial_protocol_data_index = 0;
+                } else {
+                    serial_protocol_state = PROTOCOL_STATE_IDLE;
+                }
+            }
+            break;
+    }
+}
+
+void serial_protocol_process_data(void) {
+    uint8_t len = 0;
+    // fetch pointer to data
+    uint8_t *data = serial_protocol_data;
+
+    // extract command
+    uint8_t cmd = (*data++) & 0x0F;
+
+    // variable or fixed length?
+    if (cmd & 0x08) {
+        // variable length command
+        len = *data++;
+    }
+
+    switch(cmd) {
+        default:
+            // invalid, ignore
+            break;
+     
+        case(PROTOCOL_CMD_SET_REGISTER):
+        {
+            // set register
+            uint8_t reg = *data++;
+            uint8_t value = *data;
+            break;
+        }
+
+        case(PROTOCOL_CMD_FILL_REGION):
+        {
+            // fill screen region
+            uint8_t x = *data++;
+            uint8_t y = *data++;
+            uint8_t width = *data++;
+            uint8_t height = *data++;
+            uint8_t value = *data;
+            break;
+        }
+
+        case(PROTOCOL_CMD_WRITE):
+        {
+            // set single character
+            uint8_t x = *data++;
+            uint8_t y = *data;
+            break;
+        }
+
+        case(PROTOCOL_CMD_WRITE_BUFFER_H):
+        {
+            // check for invalid length
+            if (len <= 2) return;
+            // write len bytes to framebuffer
+            uint8_t x = *data++;
+            uint8_t y = *data++;
+            // subtract length 
+            len -= 2;
+            // check for valid x start
+            if (x >= VIDEO_CHAR_BUFFER_WIDTH) return;
+            // fill
+            while(len){
+                if (y >= VIDEO_CHAR_BUFFER_HEIGHT) return;
+                video_char_buffer[y][x] = *data++;
+                // prepare for next write position
+                x++;
+                // wrap to next line on x overflow
+                if (x >= VIDEO_CHAR_BUFFER_WIDTH) y++;
+                // keep track of bytes to write
+                len--;
+            }
+            break;
+        }
+
+        case(PROTOCOL_CMD_WRITE_BUFFER_V):
+        {
+            // check for invalid length
+            if (len <= 2) return;
+            // write len bytes to framebuffer
+            uint8_t x = *data++;
+            uint8_t y = *data++;
+            // subtract lenght
+            if (len <= 2) return;
+            len -= 2;
+            // check for valid x start
+            if (y >= VIDEO_CHAR_BUFFER_HEIGHT) return;
+            // fill
+            while(len){
+                if (x >= VIDEO_CHAR_BUFFER_WIDTH) return;
+                video_char_buffer[y][x] = *data++;
+                // prepare for next write position
+                y++;
+                // wrap to next line on x overflow
+                if (y >= VIDEO_CHAR_BUFFER_HEIGHT) x++;
+                // keep track of bytes to write
+                len--;
+            }   
+            break;
+        }
+    
+        case(PROTOCOL_CMD_SPECIAL):
+        {
+            // special command
+            uint8_t subcmd = *data++;
+            if (subcmd == PROTOCOL_CMD_SPECIAL_SUBCMD_STICKSTATUS) {
+                // stick input [A] [E] [T] [R] [FC_STATUS]
+                video_stick_data[0] = *data++;
+                video_stick_data[1] = *data++;
+                video_stick_data[2] = *data++;
+                video_stick_data[3] = *data++;
+                video_armed_state =  *data++;
+            }
+            break;
+         }
+    }
+
+}
+
+
+/*
                 switch(serial_protocol_frame_command) {
                     default:
                         break;
@@ -276,5 +423,4 @@ void serial_process(void) {
             // done!
             serial_protocol_state = SERIAL_PROTOCOL_STATE_IDLE;
             break;
-    }
-}
+*/

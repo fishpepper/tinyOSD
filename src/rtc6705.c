@@ -21,6 +21,7 @@
 #include "macros.h"
 #include "config.h"
 #include "debug.h"
+#include "delay.h"
 
 #include <libopencm3/stm32/rcc.h>
 #include <libopencm3/stm32/gpio.h>

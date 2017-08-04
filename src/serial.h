@@ -25,14 +25,32 @@
 void serial_init(void);
 void serial_process(void);
 
-#define TINYOSD_COMMAND_SET_STATUS        0x00
-#define TINYOSD_COMMAND_FILL_SCREEN       0x01
-#define TINYOSD_COMMAND_WRITE_STICKDATA   0x07
-//
-//
-#define TINYOSD_COMMAND_WRITE_PAGE_0      0x10
-#define TINYOSD_COMMAND_WRITE_PAGE_1      0x11
-#define TINYOSD_COMMAND_WRITE_PAGE_2      0x12
-#define TINYOSD_COMMAND_WRITE_PAGE_3      0x13
+#define CRC8_FROM_HEADER (0x89)
+#define PROTOCOL_FRAME_MAX_LEN 64
 
+#define PROTOCOL_HEADER                   0x80
+
+#define PROTOCOL_CMD_SET_REGISTER         0x0
+#define PROTOCOL_CMD_FILL_REGION          0x2
+#define PROTOCOL_CMD_WRITE                0x1
+// 0x2
+// 0x3
+// 0x4
+// 0x5
+// 0x7
+#define PROTOCOL_CMD_WRITE_BUFFER_H       0x8
+#define PROTOCOL_CMD_WRITE_BUFFER_V       0x9
+// 0xA
+// 0xB
+// 0xC
+// 0xD
+// 0xE
+#define PROTOCOL_CMD_SPECIAL              0xF
+
+#define PROTOCOL_CMD_SPECIAL_SUBCMD_STICKSTATUS  0x00
+
+
+#define PROTOCOL_DEVICE_OSD               0x0
+#define PROTOCOL_DEVICE_VTX               0x1
+#define PROTOCOL_DEVICE_CAM               0x2
 #endif  // SERIAL_H_
