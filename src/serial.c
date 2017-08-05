@@ -146,7 +146,6 @@ void serial_process(void) {
     // update crc
     CRC8_UPDATE(serial_protocol_crc, rx);
 
-static uint8_t dbg=0;
     switch (serial_protocol_state) {
         default:
         case(PROTOCOL_STATE_IDLE):
@@ -272,21 +271,26 @@ void serial_protocol_process_data(void) {
         case(PROTOCOL_CMD_FILL_REGION):
         {
             // fill screen region
-            uint8_t x = *data++;
-            uint8_t y = *data++;
+            uint8_t xs = *data++;
+            uint8_t ys = *data++;
             uint8_t width = *data++;
             uint8_t height = *data++;
             uint8_t value = *data;
-            /*while (height--){
-                if (y >= VIDEO_CHAR_BUFFER_HEIGHT) return;
-                uint8_t todo = width;
-                while (todo--) {
-                    if (x >= VIDEO_CHAR_BUFFER_WIDTH) return;
+
+            if (ys >= VIDEO_CHAR_BUFFER_HEIGHT) return;
+            if (xs >= VIDEO_CHAR_BUFFER_WIDTH) return;
+
+            for(uint8_t y = ys; y < VIDEO_CHAR_BUFFER_HEIGHT; y++){
+                if (height == 0) break;
+                height--;
+                uint8_t w = width;
+                for(uint8_t x = xs; x < VIDEO_CHAR_BUFFER_WIDTH; x++){
+                    if (w == 0) break;
+                    w--;
+                    // ok, inside of safe region!
                     video_char_buffer[y][x] = value;
-                    x++;
                 }
-                y++;
-            }*/
+            }
             break;
         }
 
