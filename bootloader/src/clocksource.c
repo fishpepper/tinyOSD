@@ -19,18 +19,18 @@
 
 #include "clocksource.h"
 #include "config.h"
+
 #include <libopencm3/cm3/nvic.h>
 #include <libopencm3/cm3/systick.h>
 #include <libopencm3/stm32/rcc.h>
 #include <libopencm3/stm32/flash.h>
 
-
 #if CPU_CLOCK == 72000000
 static void clocksource_hse_in_8_out_72(void);
-#endif
+#endif  // CPU_CLOCK
 #if CPU_CLOCK == 48000000
 static void clocksource_hse_in_8_out_48(void);
-#endif
+#endif  // CPU_CLOCK
 
 uint32_t rcc_timer_frequency;
 
@@ -42,7 +42,7 @@ void clocksource_init(void) {
     clocksource_hse_in_8_out_72();
 #else
     ERROR: unsupported clock freq requested
-#endif
+#endif  // CPU_CLOCK
 }
 
 #if CPU_CLOCK == 72000000
@@ -94,7 +94,7 @@ static void clocksource_hse_in_8_out_72(void) {
     rcc_apb1_frequency = 36000000;
     rcc_apb2_frequency = 36000000;
 }
-#endif
+#endif  // CPU_CLOCK
 
 #if CPU_CLOCK == 48000000
 static void clocksource_hse_in_8_out_48(void) {
@@ -145,4 +145,5 @@ static void clocksource_hse_in_8_out_48(void) {
     rcc_apb1_frequency = 24000000;
     rcc_apb2_frequency = 24000000;
 }
-#endif
+#endif  // CPU_CLOCK
+
