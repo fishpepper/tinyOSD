@@ -5,10 +5,12 @@
 #define CAMOSD_RUNCAM 0
 #define CAMOSD_VM275  1
 #define EVALBOARD     2
+#define TINYFINITY    3
 
 
 //#define BOARD CAMOSD_VM275
-#define BOARD CAMOSD_VM275
+//#define BOARD CAMOSD_VM275
+#define BOARD TINYFINITY
 
 #if (BOARD == CAMOSD_VM275)
     // vm275
@@ -23,6 +25,14 @@
     #define LED_GPIO GPIOA
     #define LED_PIN  GPIO5
     #define VIDEO_BSYNC_VOLTAGE_MV 210
+    #define VIDEO_DAC_VCC       CPU_VOLTAGE
+#elif (BOARD == TINYFINITY)
+    // tinyFINITY
+    #define CPU_VOLTAGE 3.3
+    // led disabled
+    #define LED_GPIO GPIOB
+    #define LED_PIN  GPIO0
+    #define VIDEO_BSYNC_VOLTAGE_MV 100
     #define VIDEO_DAC_VCC       CPU_VOLTAGE
 #else
     // eval board
@@ -80,7 +90,7 @@
 #define RTC6705_PIN_CS           GPIO0
 
 
-#define SERIAL_OVERRUN_DETECTION_DISABLED 1
+#define SERIAL_OVERRUN_DETECTION_DISABLED 0
 
 #define NVIC_PRIO_COMPARATOR 0*64
 #define NVIC_PRIO_TIMER1     1*64

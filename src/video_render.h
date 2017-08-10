@@ -30,7 +30,9 @@ void video_render_animation(uint8_t page_to_fill, uint16_t visible_line);
 void video_render_text(uint8_t page_to_fill, uint16_t visible_line);
 void video_render_sticks(uint8_t page_to_fill, uint16_t visible_line);
 void video_render_pilot_logo(uint8_t page_to_fill, uint16_t  visible_line);
+
 void video_render_overlay_sticks(uint8_t page_to_fill, uint16_t visible_line);
+void video_render_overlay_spectrum(uint8_t page_to_fill, uint16_t visible_line);
 void video_render_grey_bars(uint8_t page_to_fill, uint16_t visible_line);
 
 

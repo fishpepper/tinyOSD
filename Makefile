@@ -228,12 +228,12 @@ endif
                    $(*).elf
 
 
-sterase : 
+st-erase : 
 	st-flash erase
 
-stflasherase : sterase stflash
+st-flasherase : sterase stflash
 
-stflash : $(BIN_DIR)/$(TARGET).bin
+st-flash : $(BIN_DIR)/$(TARGET).bin
 	st-flash --reset write $(BIN_DIR)/$(TARGET).bin 0x8000000 
 
 

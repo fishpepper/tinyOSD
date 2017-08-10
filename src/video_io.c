@@ -41,7 +41,7 @@ void video_io_init(void) {
     video_io_init_gpio();
     video_io_init_dac();
 
-    video_io_set_level_mv(WHITE, 800);
+    video_io_set_level_mv(WHITE, 1000);
     video_io_set_level_mv(BLACK,   0);
 }
 

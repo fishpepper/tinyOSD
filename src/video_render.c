@@ -205,6 +205,50 @@ void video_render_overlay_sticks(uint8_t page_to_fill, uint16_t visible_line) {
     */
 }
 
+uint8_t video_spectrum_buffer[VIDEO_RENDER_SPECTRUM_BINS];
+
+void video_render_overlay_spectrum(uint8_t page_to_fill, uint16_t visible_line) {
+    uint16_t py = visible_line - VIDEO_START_LINE_SPECTRUM;
+
+    // check if this is inside the stick ui region
+    if (py > VIDEO_RENDER_SPECTRUM_SIZE_Y + 3){
+        // outside, abort
+        return;
+    }
+
+    if (py > VIDEO_RENDER_SPECTRUM_SIZE_Y+1) {
+        // render bottom of stick rect
+        uint8_t *buf_w = (uint8_t *)&video_line.buffer[WHITE][page_to_fill][VIDEO_RENDER_SPECTRUM_POS_X/8/2];
+
+        // white is shiftet 1 byte
+        // plus shift for non 16bit aligned start positions:
+        buf_w += 1 +  ((VIDEO_RENDER_SPECTRUM_POS_X/8) & 1);
+
+        for(uint32_t bin = 0; bin < VIDEO_RENDER_SPECTRUM_BINS; bin++) {
+            *buf_w++ = 0xFF;
+            *buf_w++ = 0xFF;
+        }
+    } else {
+        // render fft bins
+        uint8_t *buf_w = (uint8_t *)&video_line.buffer[WHITE][page_to_fill][VIDEO_RENDER_SPECTRUM_POS_X/8/2];
+
+        // white is shiftet 1 byte
+        // plus shift for non 16bit aligned start positions:
+        buf_w += 1 +  ((VIDEO_RENDER_SPECTRUM_POS_X/8) & 1);
+
+        uint8_t bin_y = 128 - py;
+        for(uint32_t bin = 0; bin < VIDEO_RENDER_SPECTRUM_BINS; bin++) {
+            if (video_spectrum_buffer[bin] >= bin_y) {
+                *buf_w++ = 0b011111111;
+                *buf_w++ = 0b111111110;
+            } else {
+                buf_w+=2;
+            }
+        }
+    }
+}
+
+
 #if 0
 void video_render_sticks(uint8_t page_to_fill, uint16_t visible_line) {
     uint16_t py = visible_line - VIDEO_START_LINE_STICKS;

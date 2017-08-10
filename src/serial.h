@@ -48,6 +48,7 @@ void serial_process(void);
 #define PROTOCOL_CMD_SPECIAL              0xF
 
 #define PROTOCOL_CMD_SPECIAL_SUBCMD_STICKSTATUS  0x00
+#define PROTOCOL_CMD_SPECIAL_SUBCMD_SPECTRUM     0x01
 
 
 #define PROTOCOL_DEVICE_OSD               0x0

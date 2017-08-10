@@ -367,7 +367,13 @@ void serial_protocol_process_data(void) {
                 video_stick_data[1] = *data++;
                 video_stick_data[2] = *data++;
                 video_stick_data[3] = *data++;
-                video_armed_state =  *data++;
+                video_armed_state =  *data;
+            } else if (subcmd == PROTOCOL_CMD_SPECIAL_SUBCMD_SPECTRUM) {
+                uint8_t axis = *data++;
+                for(uint32_t bin=0; bin < VIDEO_RENDER_SPECTRUM_BINS; bin++) {
+                    // spectrum needs to be 0..127
+                    video_spectrum_buffer[bin] = (*data++) / 2;
+                }
             }
             break;
          }

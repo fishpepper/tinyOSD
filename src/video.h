@@ -25,7 +25,7 @@
 #define VIDEO_DEBUG_DURATION_TEXTLINE 0
 #define VIDEO_DEBUG_DURATION_ANIMATION 0
 
-#define VIDEO_RENDER_DEBUG_DATA 1
+#define VIDEO_RENDER_DEBUG_DATA 0
 #define VIDEO_RENDER_ADCVAL     0
 #define VIDEO_RENDER_BARS       0
 
@@ -40,7 +40,7 @@
 #define VIDEO_END_LINE_ANIMATION (VIDEO_START_LINE_ANIMATION + LOGO_HEIGHT)
 #define VIDEO_CENTER_LINE_ANIMATION ((VIDEO_END_LINE_ANIMATION - VIDEO_START_LINE_ANIMATION)/2 + VIDEO_START_LINE_ANIMATION)
 
-#define VIDEO_START_PILOT_LOGO_Y (2*18)
+#define VIDEO_START_PILOT_LOGO_Y (0*18)
 
 #define VIDEO_RENDER_STICK_SIZE       96
 #define VIDEO_RENDER_STICK_SIZE_X     96
@@ -49,6 +49,12 @@
 #define VIDEO_RENDER_STICK_POS_X2   (576 - VIDEO_RENDER_STICK_POS_X - VIDEO_RENDER_STICK_SIZE_X)
 #define VIDEO_START_LINE_STICKS    (7*35)
 #define VIDEO_END_LINE_STICKS  (VIDEO_START_LINE_STICKS + VIDEO_RENDER_STICK_SIZE)
+
+#define VIDEO_RENDER_SPECTRUM_BINS      16
+#define VIDEO_START_LINE_SPECTRUM       (7*10)
+#define VIDEO_RENDER_SPECTRUM_SIZE_Y    128
+#define VIDEO_RENDER_SPECTRUM_SIZE_X    (VIDEO_RENDER_SPECTRUM_BINS*2*8)
+#define VIDEO_RENDER_SPECTRUM_POS_X        (576 - VIDEO_RENDER_SPECTRUM_SIZE_X - 32)
 
 void video_init(void);
 void video_main_loop(void);
@@ -81,6 +87,7 @@ extern uint16_t video_min_level;
 
 extern volatile uint8_t video_stick_data[4];
 extern uint8_t video_armed_state;
+extern uint8_t video_spectrum_buffer[];
 
 typedef struct {
     volatile uint16_t buffer[2][2][VIDEO_BUFFER_WIDTH/2];

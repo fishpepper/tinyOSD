@@ -240,6 +240,17 @@ void video_render_blank(uint16_t line) {
             }
             break;
 
+        case(VIDEO_FIRST_ACTIVE_LINE-6):
+            // stats: line length
+            {
+            uint8_t *buf = &video_char_buffer[5+5][29];
+            //video_put_uint8(buf+0, video_stats_line_usage_min);
+            strcpy((char *)buf, "ARM");
+            video_put_uint8(buf+3, video_armed_state);
+            }
+            break;
+
+
 
 #endif
     }
@@ -276,7 +287,8 @@ void video_main_loop(void) {
                 // render adc data
 #else
                 // normal ui
-                if (((video_armed_state & (1<<3)) == 0) &&
+                //video_armed_state |= (1<<3);
+                if (((video_armed_state & (1<<1)) == 0) &&
                      (visible_line >= VIDEO_START_LINE_ANIMATION) &&
                      (visible_line < VIDEO_END_LINE_ANIMATION)
                    ) {
@@ -287,11 +299,13 @@ void video_main_loop(void) {
                     video_render_text(page_to_fill, visible_line);
 
                     // render some more data when armed
-                    if (video_armed_state & (1<<2)) {
+                    if (video_armed_state & (1<<0)) {
                         // copter is armed
                         video_render_overlay_sticks(page_to_fill, visible_line);
                         video_render_pilot_logo(page_to_fill, visible_line);
+                        video_render_overlay_spectrum(page_to_fill, visible_line);
                     }
+
                 }
 #endif
             }
