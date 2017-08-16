@@ -25,6 +25,7 @@
 #include "led.h"
 #include "macros.h"
 #include "crc8.h"
+#include "video_io.h"
 
 #include <stdint.h>
 #include <libopencm3/stm32/rcc.h>
@@ -243,6 +244,7 @@ void serial_process(void) {
 
 void serial_protocol_process_data(void) {
     uint8_t len = 0;
+    uint16_t tmp;
     // fetch pointer to data
     uint8_t *data = serial_protocol_data;
 
@@ -265,6 +267,35 @@ void serial_protocol_process_data(void) {
             // set register
             uint8_t reg = *data++;
             uint8_t value = *data;
+
+            switch(reg) {
+                default:
+                    break;
+
+                // invert colors
+                case (PROTOCOL_REGISTER_INVERT):
+                    video_inverted = (value != 0) ? 1 : 0;
+                    break;
+
+                // brightness black, allow 0...500 mV
+                case (PROTOCOL_REGISTER_BRIGHTNESS_BLACK):
+                {
+                    // input is 0..100
+                    tmp = 5 * value;
+                    video_io_set_level_mv(BLACK, tmp);
+                    break;
+                }
+                // brightness white, allow 500..1200 mV for black
+                case (PROTOCOL_REGISTER_BRIGHTNESS_WHITE):
+                {
+                    // input is 0..100
+                    tmp = value;
+                    tmp = 500 + ((1200-500)*tmp) / 100;
+                    video_io_set_level_mv(WHITE, tmp);
+                    break;
+                }
+            }
+
             break;
         }
 
@@ -275,7 +306,7 @@ void serial_protocol_process_data(void) {
             uint8_t ys = *data++;
             uint8_t width = *data++;
             uint8_t height = *data++;
-            uint8_t value = *data;
+            uint8_t c = *data;
 
             if (ys >= VIDEO_CHAR_BUFFER_HEIGHT) return;
             if (xs >= VIDEO_CHAR_BUFFER_WIDTH) return;
@@ -288,7 +319,7 @@ void serial_protocol_process_data(void) {
                     if (w == 0) break;
                     w--;
                     // ok, inside of safe region!
-                    video_char_buffer[y][x] = value;
+                    video_char_buffer[y][x] = c;
                 }
             }
             break;
@@ -299,10 +330,10 @@ void serial_protocol_process_data(void) {
             // set single character
             uint8_t x = *data++;
             uint8_t y = *data++;
-            uint8_t value = *data;
+            uint8_t c = *data;
             if (x >= VIDEO_CHAR_BUFFER_WIDTH) return;
             if (y >= VIDEO_CHAR_BUFFER_HEIGHT) return;
-            video_char_buffer[y][x] = value;
+            video_char_buffer[y][x] = c;
             break;
         }
 

@@ -51,6 +51,13 @@ void serial_process(void);
 #define PROTOCOL_CMD_SPECIAL_SUBCMD_SPECTRUM     0x01
 
 
+#define PROTOCOL_REGISTER_STATUS                  0x00
+#define PROTOCOL_REGISTER_VIDEO_FORMAT            0x01
+#define PROTOCOL_REGISTER_INVERT                  0x02
+#define PROTOCOL_REGISTER_BRIGHTNESS_BLACK        0x03
+#define PROTOCOL_REGISTER_BRIGHTNESS_WHITE        0x04
+
+
 #define PROTOCOL_DEVICE_OSD               0x0
 #define PROTOCOL_DEVICE_VTX               0x1
 #define PROTOCOL_DEVICE_CAM               0x2

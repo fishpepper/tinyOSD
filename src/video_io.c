@@ -125,15 +125,15 @@ void video_io_set_level_mv(uint8_t port, uint16_t mv){
 
     ///debug("video_io: v_white = "); debug_put_uint16(v_white); debug_put_newline();
 
-    // limit to be inside allowed range of 0..700 (+100) mV
-    mv = min(800, mv);
+    // limit to be inside allowed range of 0..700 (+200) mV
+    mv = min(900, mv);
 
     //debug("video_io: v_set   = "); debug_put_uint16(mv); debug_put_newline();
 
     // add offset to pal levels:
     //   0 % = video signal min + black level
     // 100 % = video signal min + black level + 700mV
-    // allow for a bit more, set black level to 250mV, max is 250+800 = 1050mV
+    // allow for a bit more, set black level to 250mV, max is 250+900 = 1150mV
     mv = mv + video_min_level + 250;
 
     // input: target voltage in mv
@@ -151,6 +151,12 @@ void video_io_set_level_mv(uint8_t port, uint16_t mv){
 
     if (raw > 15.0) {
         raw = 15;
+    }
+
+    if (video_inverted) {
+        // switch colors
+        //raw = 15 - raw;
+        port = (port == WHITE) ? BLACK : WHITE;
     }
 
     if (port == WHITE) {

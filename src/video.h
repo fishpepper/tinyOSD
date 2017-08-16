@@ -36,7 +36,7 @@
 #include <stdint.h>
 //#define VIDEO_START_LINE_ANIMATION (VIDEO_CENTER_ACTIVE_LINE - LOGO_HEIGHT/2)
 //#define VIDEO_END_LINE_ANIMATION (VIDEO_CENTER_ACTIVE_LINE + LOGO_HEIGHT/2)
-#define VIDEO_START_LINE_ANIMATION (68)
+#define VIDEO_START_LINE_ANIMATION (68+1)
 #define VIDEO_END_LINE_ANIMATION (VIDEO_START_LINE_ANIMATION + LOGO_HEIGHT)
 #define VIDEO_CENTER_LINE_ANIMATION ((VIDEO_END_LINE_ANIMATION - VIDEO_START_LINE_ANIMATION)/2 + VIDEO_START_LINE_ANIMATION)
 
@@ -81,6 +81,7 @@ extern uint8_t video_char_buffer[VIDEO_CHAR_BUFFER_HEIGHT][VIDEO_CHAR_BUFFER_WID
 extern uint16_t video_char_buffer_write_ptr;
 extern uint8_t video_mode;
 extern uint16_t video_min_level;
+extern uint8_t video_inverted;
 
 #define VIDEO_CLEAR_BUFFER(__col, __idx) { memset((void *)&video_line.buffer[__col][__idx][0], 0, (VIDEO_BUFFER_WIDTH/2)*2); }
 #define VIDEO_SET_BUFFER(__col, __idx) { memset((void *)&video_line.buffer[__col][__idx][0], 0xFFFF, (VIDEO_BUFFER_WIDTH/2)*2); }

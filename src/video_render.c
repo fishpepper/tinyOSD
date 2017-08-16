@@ -239,8 +239,8 @@ void video_render_overlay_spectrum(uint8_t page_to_fill, uint16_t visible_line) 
         uint8_t bin_y = 128 - py;
         for(uint32_t bin = 0; bin < VIDEO_RENDER_SPECTRUM_BINS; bin++) {
             if (video_spectrum_buffer[bin] >= bin_y) {
-                *buf_w++ = 0b011111111;
-                *buf_w++ = 0b111111110;
+                *buf_w++ = 0b01111111;
+                *buf_w++ = 0b11111110;
             } else {
                 buf_w+=2;
             }

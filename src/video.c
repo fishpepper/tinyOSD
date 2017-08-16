@@ -55,6 +55,7 @@ volatile uint32_t video_buffer_page;
 uint8_t video_armed_state;
 uint8_t video_mode;
 uint16_t video_min_level;
+uint8_t video_inverted;
 
 volatile uint16_t video_stats_line_start;
 volatile uint16_t video_stats_line_usage_min;
@@ -63,6 +64,7 @@ volatile uint16_t video_stats_line_usage_max;
 void video_init(void) {
     debug_function_call();
 
+    video_inverted = false;
     video_armed_state = 0;
     video_mode = VIDEO_MODE_NTSC;
 
@@ -131,8 +133,8 @@ static void video_detect_pal_ntsc(void) {
 static void video_detect_blank_level(void) {
     debug_function_call();
 
-    debug("video: waiting 500ms for cam to be ready\n");
-    timeout_delay_ms(500);
+    debug("video: waiting 50ms for cam to be ready\n");
+    timeout_delay_ms(50);
 
     // first: find blank level. start with 0mV and search up to 300mV
     // this should not take too long, let's do this within < 500ms
