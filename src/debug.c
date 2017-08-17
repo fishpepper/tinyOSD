@@ -28,6 +28,7 @@
 #include <libopencm3/stm32/gpio.h>
 #include <libopencm3/stm32/usart.h>
 
+#if DEBUG_PRINTS_ENABLED
 static void debug_init_gpio(void);
 static void debug_init_rcc(void);
 static void debug_init_uart(void);
@@ -307,3 +308,4 @@ void debug_put_newline(void) {
     debug_putc('\n');
 }
 
+#endif

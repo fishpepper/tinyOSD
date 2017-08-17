@@ -38,6 +38,8 @@ static void serial_init_uart(void);
 
 static void serial_protocol_process_data(void);
 static void serial_protocol_init(void);
+static void serial_protocol_write_register(uint8_t reg, uint16_t value);
+static void serial_protocol_read_register(uint8_t reg);
 
 #define PROTOCOL_STATE_IDLE       0x00
 #define PROTOCOL_STATE_DEVICE_CMD 0x10
@@ -104,7 +106,7 @@ void serial_init_uart(void) {
 
 static volatile uint8_t  serial_protocol_crc;
 
-static uint8_t serial_protocol_data[PROTOCOL_FRAME_MAX_LEN];
+static uint8_t serial_protocol_data[OPENTCO_MAX_FRAME_LENGTH];
 static uint8_t serial_protocol_data_index;
 static uint8_t serial_protocol_data_count;
 static uint8_t serial_protocol_state;
@@ -136,10 +138,12 @@ void serial_process(void) {
         return;
     }
 
+    led_toggle();
+
     // ok, new data available, read it
     uint8_t rx = USART_RDR(SERIAL_UART);
 
-    if (serial_protocol_data_index < PROTOCOL_FRAME_MAX_LEN){
+    if (serial_protocol_data_index < OPENTCO_MAX_FRAME_LENGTH){
         // store data
         serial_protocol_data[serial_protocol_data_index++] = rx;
     }
@@ -151,7 +155,7 @@ void serial_process(void) {
         default:
         case(PROTOCOL_STATE_IDLE):
             // look for SOF
-            if (rx == PROTOCOL_HEADER) {
+            if (rx == OPENTCO_PROTOCOL_HEADER) {
                 // new frame
                 serial_protocol_state = PROTOCOL_STATE_DEVICE_CMD;
                 CRC8_INIT(serial_protocol_crc, 0);
@@ -162,13 +166,13 @@ void serial_process(void) {
             break;
 
         case(PROTOCOL_STATE_DEVICE_CMD):
-            if (((rx >> 4) & 0xF) == PROTOCOL_DEVICE_OSD) {
+            if (((rx >> 4) & 0xF) == OPENTCO_DEVICE_OSD) {
                 // valid device id
                 serial_protocol_state = PROTOCOL_STATE_COMMAND + (rx & 0x0F);
             } else {
                 // invalid device type -> abort
-                if (rx == PROTOCOL_HEADER) {
-                    serial_protocol_crc = CRC8_FROM_HEADER;
+                if (rx == OPENTCO_PROTOCOL_HEADER) {
+                    serial_protocol_crc = OPENTCO_CRC8_FROM_HEADER;
                     serial_protocol_data_index = 0;
                 } else {
                     serial_protocol_state = PROTOCOL_STATE_IDLE;
@@ -176,33 +180,28 @@ void serial_process(void) {
             }
             break;
 
-        // 2 byte commands:
-        case(PROTOCOL_STATE_COMMAND + PROTOCOL_CMD_SET_REGISTER):
-            // [HEADER] [DEV+CMD] [REGISTER:8] [VALUE:8] [CRC:8]
-            serial_protocol_data_count = 2-1;
-            serial_protocol_state = PROTOCOL_STATE_DATA;
-            break;
-
         // 3 byte commands:
-        case(PROTOCOL_STATE_COMMAND + PROTOCOL_CMD_WRITE):
+        case(PROTOCOL_STATE_COMMAND + OPENTCO_OSD_COMMAND_REGISTER_ACCESS):
+            // [HEADER] [DEV+CMD] [REGISTER:8] [VALUE_LO:8] [VALUE_HI:8] [CRC:8]
+        case(PROTOCOL_STATE_COMMAND + OPENTCO_OSD_COMMAND_WRITE):
             // [HEADER] [DEV+CMD] [X:8] [Y:8] [VALUE:8] [CRC:8]
             serial_protocol_data_count = 3-1;
             serial_protocol_state = PROTOCOL_STATE_DATA;
             break;
 
         // 5 byte commands:
-        case(PROTOCOL_STATE_COMMAND + PROTOCOL_CMD_FILL_REGION):
+        case(PROTOCOL_STATE_COMMAND + OPENTCO_OSD_COMMAND_FILL_REGION):
             // [HEADER] [DEV+CMD] [X:8] [Y:8] [WIDTH:8] [HEIGHT:8] [VALUE:8] [CRC:8]
             serial_protocol_data_count = 5-1;
             serial_protocol_state = PROTOCOL_STATE_DATA;
             break;
 
         // variable length commands
-        case(PROTOCOL_STATE_COMMAND + PROTOCOL_CMD_WRITE_BUFFER_H):
-        case(PROTOCOL_STATE_COMMAND + PROTOCOL_CMD_WRITE_BUFFER_V):
-        case(PROTOCOL_STATE_COMMAND + PROTOCOL_CMD_SPECIAL):
+        case(PROTOCOL_STATE_COMMAND + OPENTCO_OSD_COMMAND_WRITE_BUFFER_H):
+        case(PROTOCOL_STATE_COMMAND + OPENTCO_OSD_COMMAND_WRITE_BUFFER_V):
+        case(PROTOCOL_STATE_COMMAND + OPENTCO_OSD_COMMAND_SPECIAL):
             // [0x80] [DEV+CMD] [LEN] [LEN*DATA] [CRC:8] 
-            if ((rx == 0) || (rx > (PROTOCOL_FRAME_MAX_LEN-2))) {
+            if ((rx == 0) || (rx > (OPENTCO_MAX_FRAME_LENGTH-2))) {
                 // not allowed
                 serial_protocol_state = PROTOCOL_STATE_IDLE;
             } else {
@@ -231,8 +230,8 @@ void serial_process(void) {
             } else {
                 // crc error! 
                 video_uart_checksum_err++;
-                if (rx == PROTOCOL_HEADER) {
-                    serial_protocol_crc = CRC8_FROM_HEADER;
+                if (rx == OPENTCO_PROTOCOL_HEADER) {
+                    serial_protocol_crc = OPENTCO_CRC8_FROM_HEADER;
                     serial_protocol_data_index = 0;
                 } else {
                     serial_protocol_state = PROTOCOL_STATE_IDLE;
@@ -242,9 +241,11 @@ void serial_process(void) {
     }
 }
 
-void serial_protocol_process_data(void) {
+uint16_t video_register[OPENTCO_MAX_REGISTER];
+
+static void serial_protocol_process_data(void) {
     uint8_t len = 0;
-    uint16_t tmp;
+
     // fetch pointer to data
     uint8_t *data = serial_protocol_data;
 
@@ -262,44 +263,28 @@ void serial_protocol_process_data(void) {
             // invalid, ignore
             break;
      
-        case(PROTOCOL_CMD_SET_REGISTER):
+        case(OPENTCO_OSD_COMMAND_REGISTER_ACCESS):
         {
-            // set register
+            // register access
             uint8_t reg = *data++;
-            uint8_t value = *data;
+            uint8_t value_lo = *data++;
+            uint8_t value_hi = *data++;
+            uint16_t value = (value_hi << 8) | value_lo;
 
-            switch(reg) {
-                default:
-                    break;
+            uint8_t read = reg & OPENTCO_REGISTER_ACCESS_MODE_READ;
+            reg = reg & ~(OPENTCO_REGISTER_ACCESS_MODE_READ);
 
-                // invert colors
-                case (PROTOCOL_REGISTER_INVERT):
-                    video_inverted = (value != 0) ? 1 : 0;
-                    break;
-
-                // brightness black, allow 0...500 mV
-                case (PROTOCOL_REGISTER_BRIGHTNESS_BLACK):
-                {
-                    // input is 0..100
-                    tmp = 5 * value;
-                    video_io_set_level_mv(BLACK, tmp);
-                    break;
-                }
-                // brightness white, allow 500..1200 mV for black
-                case (PROTOCOL_REGISTER_BRIGHTNESS_WHITE):
-                {
-                    // input is 0..100
-                    tmp = value;
-                    tmp = 500 + ((1200-500)*tmp) / 100;
-                    video_io_set_level_mv(WHITE, tmp);
-                    break;
-                }
+            if (read) {
+                // read request
+                serial_protocol_read_register(reg);
+            } else {
+                // write
+                serial_protocol_write_register(reg, value);
             }
-
             break;
         }
 
-        case(PROTOCOL_CMD_FILL_REGION):
+        case(OPENTCO_OSD_COMMAND_FILL_REGION):
         {
             // fill screen region
             uint8_t xs = *data++;
@@ -325,7 +310,7 @@ void serial_protocol_process_data(void) {
             break;
         }
 
-        case(PROTOCOL_CMD_WRITE):
+        case(OPENTCO_OSD_COMMAND_WRITE):
         {
             // set single character
             uint8_t x = *data++;
@@ -337,7 +322,7 @@ void serial_protocol_process_data(void) {
             break;
         }
 
-        case(PROTOCOL_CMD_WRITE_BUFFER_H):
+        case(OPENTCO_OSD_COMMAND_WRITE_BUFFER_H):
         {
             // check for invalid length
             if (len <= 2) return;
@@ -362,7 +347,7 @@ void serial_protocol_process_data(void) {
             break;
         }
 
-        case(PROTOCOL_CMD_WRITE_BUFFER_V):
+        case(OPENTCO_OSD_COMMAND_WRITE_BUFFER_V):
         {
             // check for invalid length
             if (len <= 2) return;
@@ -388,18 +373,18 @@ void serial_protocol_process_data(void) {
             break;
         }
     
-        case(PROTOCOL_CMD_SPECIAL):
+        case(OPENTCO_OSD_COMMAND_SPECIAL):
         {
             // special command
             uint8_t subcmd = *data++;
-            if (subcmd == PROTOCOL_CMD_SPECIAL_SUBCMD_STICKSTATUS) {
+            if (subcmd == OPENTCO_OSD_COMMAND_SPECIAL_SUB_STICKSTATUS) {
                 // stick input [A] [E] [T] [R] [FC_STATUS]
                 video_stick_data[0] = *data++;
                 video_stick_data[1] = *data++;
                 video_stick_data[2] = *data++;
                 video_stick_data[3] = *data++;
                 video_armed_state =  *data;
-            } else if (subcmd == PROTOCOL_CMD_SPECIAL_SUBCMD_SPECTRUM) {
+            } else if (subcmd == OPENTCO_OSD_COMMAND_SPECIAL_SUB_SPECTRUM) {
                 uint8_t axis = *data++;
                 for(uint32_t bin=0; bin < VIDEO_RENDER_SPECTRUM_BINS; bin++) {
                     // spectrum needs to be 0..127
@@ -411,6 +396,72 @@ void serial_protocol_process_data(void) {
     }
 
 }
+
+
+void serial_protocol_write_register(uint8_t reg, uint16_t value) {
+    uint16_t tmp;
+
+    // check register address
+    if (reg > OPENTCO_MAX_REGISTER) return;
+
+    // store value
+    video_register[reg] = value;
+
+    switch(reg) {
+        default:
+            break;
+
+        case (OPENTCO_OSD_REGISTER_VIDEO_FORMAT):
+        case (OPENTCO_OSD_REGISTER_STATUS):
+            // FIXME: add function
+            break;
+
+        // invert colors
+        case (OPENTCO_OSD_REGISTER_INVERT):
+            video_inverted = (value != 0) ? 1 : 0;
+            break;
+
+        // brightness black, allow 0...500 mV
+        case (OPENTCO_OSD_REGISTER_BRIGHTNESS_BLACK):
+            // input is 0..100
+            tmp = 5 * value;
+            video_io_set_level_mv(BLACK, tmp);
+            break;
+
+        // brightness white, allow 500..1200 mV for black
+        case (OPENTCO_OSD_REGISTER_BRIGHTNESS_WHITE):
+            // input is 0..100
+            tmp = value;
+            tmp = 500 + ((1200-500)*tmp) / 100;
+            video_io_set_level_mv(WHITE, tmp);
+            break;
+    }
+}
+
+void serial_protocol_read_register(uint8_t reg) {
+    // check register address
+    if (reg > OPENTCO_MAX_REGISTER) return;
+
+    uint8_t buffer[6];
+    buffer[0] = OPENTCO_PROTOCOL_HEADER;
+    buffer[1] = (OPENTCO_DEVICE_OSD_RESPONSE << 4) | OPENTCO_OSD_COMMAND_REGISTER_ACCESS;
+    buffer[2] = reg;
+    buffer[3] = video_register[reg] & 0xFF;
+    buffer[4] = (video_register[reg] >> 8) & 0xFF;
+
+    uint8_t crc;
+    CRC8_INIT(crc, 0);
+    for(uint32_t i = 0; i < 5; i++) {
+        CRC8_UPDATE(crc, buffer[i]);
+    }
+    buffer[5] = crc;
+
+    // send response
+    for(uint32_t i = 0; i < 6; i++) {
+        usart_send_blocking(SERIAL_UART, buffer[i]);
+    }
+}
+
 
 
 /*

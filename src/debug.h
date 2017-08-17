@@ -21,7 +21,9 @@
 #define DEBUG_H_
 
 #include <stdint.h>
+#include "config.h"
 
+#if DEBUG_PRINTS_ENABLED
 void debug_init(void);
 void debug_putc(uint8_t ch);
 void debug_flush(void);
@@ -35,6 +37,22 @@ void debug_put_uint16(uint16_t c);
 void debug_put_newline(void);
 void debug_put_fixed2(uint16_t c);
 void debug_put_fixed1p3(uint16_t c);
+
+#else
+    #define debug_init() {}
+    #define debug_putc(x) {}
+    #define debug_flush() {}
+    #define debug(x) {}
+    #define debug_put_hex8(x) {}
+    #define debug_put_hex16(x) {}
+    #define debug_put_hex32(x) {}
+    #define debug_put_uint8(x) {}
+    #define debug_put_int8(x) {}
+    #define debug_put_uint16(x) {}
+    #define debug_put_newline() {}
+    #define debug_put_fixed2(x) {}
+    #define debug_put_fixed1p3(x) {}
+#endif
 
 #define debug_function_call() { debug(__FILE__); debug(": "); debug((char*)__FUNCTION__); debug("()\n"); }
 #define debug_function_call_u16(val) { debug(__FILE__); debug(": "); debug((char*)__FUNCTION__); debug("("); debug_put_uint16(val); debug(")\n"); }

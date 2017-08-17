@@ -511,7 +511,7 @@ void video_render_animation(uint8_t page_to_fill, uint16_t visible_line) {
         // black and white:
         for(uint8_t color = 0; color < 2; color++){
             // fetch source and dest ptr
-            video_buffer_ptr = (uint16_t*) &video_line.buffer[color][page_to_fill][0];
+            video_buffer_ptr = (uint16_t*)&video_line.buffer[color][page_to_fill][0];
             logo_ptr         = (uint16_t*)&logo_data16[color][logo_offset/2];
 
             uint16_t halfwords_todo = LOGO_WIDTH/8/2;

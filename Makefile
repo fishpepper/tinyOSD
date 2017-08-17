@@ -6,7 +6,15 @@ SOURCE_FILES = $(SOURCE_FILES_FOUND:./src/%=%)
 #SOURCE_FILES += eeprom_emulation/st_eeprom.c
 OBJECT_DIR   := $(ROOT)/obj
 BIN_DIR      = $(ROOT)/bin
+
+DEBUG     ?=
+
+ifeq ($(DEBUG),GDB)
+CFLAGS     := -Og -ggdb3 -DDEBUG
+else
 CFLAGS  = -O2 -g
+endif
+
 ASFLAGS = -g
 
 # flash using blackmagicprobe
@@ -235,6 +243,9 @@ st-flasherase : sterase stflash
 
 st-flash : $(BIN_DIR)/$(TARGET).bin
 	st-flash --reset write $(BIN_DIR)/$(TARGET).bin 0x8000000 
+
+openocd-gdb : $(BIN_DIR)/$(TARGET).elf
+	openocd -f interface/stlink-v2.cfg -f target/stm32f3x.cfg & $(GDB) $(BIN_DIR)/$(TARGET).elf -ex "target remote localhost:3333" -ex "load"
 
 
 dfu : $(BIN_DIR)/$(TARGET).bin
