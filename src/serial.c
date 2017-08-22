@@ -32,6 +32,11 @@
 #include <libopencm3/stm32/gpio.h>
 #include <libopencm3/stm32/usart.h>
 
+
+static uint16_t video_register[OPENTCO_MAX_REGISTER];
+const uint16_t *enabled_features = &video_register[OPENTCO_OSD_REGISTER_STATUS];
+
+
 static void serial_init_gpio(void);
 static void serial_init_rcc(void);
 static void serial_init_uart(void);
@@ -112,6 +117,17 @@ static uint8_t serial_protocol_data_count;
 static uint8_t serial_protocol_state;
 
 static void serial_protocol_init(void) {
+    // set supported features
+    video_register[OPENTCO_OSD_REGISTER_SUPPORTED_FEATURES] =
+            OPENTCO_OSD_FEATURE_ENABLE |
+            OPENTCO_OSD_FEATURE_INVERT |
+            OPENTCO_OSD_FEATURE_BRIGHTNESS |
+            OPENTCO_OSD_FEATURE_RENDER_LOGO |
+            OPENTCO_OSD_FEATURE_RENDER_PILOTLOGO |
+            OPENTCO_OSD_FEATURE_RENDER_STICKS |
+            OPENTCO_OSD_FEATURE_RENDER_SPECTRUM |
+            OPENTCO_OSD_FEATURE_RENDER_CROSSHAIR;
+
     serial_protocol_state = PROTOCOL_STATE_IDLE;
 }
 
@@ -241,7 +257,6 @@ void serial_process(void) {
     }
 }
 
-uint16_t video_register[OPENTCO_MAX_REGISTER];
 
 static void serial_protocol_process_data(void) {
     uint8_t len = 0;
@@ -394,9 +409,7 @@ static void serial_protocol_process_data(void) {
             break;
          }
     }
-
 }
-
 
 void serial_protocol_write_register(uint8_t reg, uint16_t value) {
     uint16_t tmp;
@@ -413,12 +426,11 @@ void serial_protocol_write_register(uint8_t reg, uint16_t value) {
 
         case (OPENTCO_OSD_REGISTER_VIDEO_FORMAT):
         case (OPENTCO_OSD_REGISTER_STATUS):
-            // FIXME: add function
+            //FIXME: ADD HANDLER
             break;
 
-        // invert colors
-        case (OPENTCO_OSD_REGISTER_INVERT):
-            video_inverted = (value != 0) ? 1 : 0;
+        case (OPENTCO_OSD_REGISTER_SUPPORTED_FEATURES):
+            // READONLY!
             break;
 
         // brightness black, allow 0...500 mV
@@ -446,7 +458,7 @@ void serial_protocol_read_register(uint8_t reg) {
     buffer[0] = OPENTCO_PROTOCOL_HEADER;
     buffer[1] = (OPENTCO_DEVICE_OSD_RESPONSE << 4) | OPENTCO_OSD_COMMAND_REGISTER_ACCESS;
     buffer[2] = reg;
-    buffer[3] = video_register[reg] & 0xFF;
+    buffer[3] = video_register[reg] & ~OPENTCO_REGISTER_ACCESS_MODE_READ;  // remove read flag 0x80
     buffer[4] = (video_register[reg] >> 8) & 0xFF;
 
     uint8_t crc;

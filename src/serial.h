@@ -26,7 +26,8 @@ void serial_init(void);
 void serial_process(void);
 
 //#define PROTOCOL_FRAME_MAX_LEN 64
-
+extern const uint16_t *enabled_features;
+#define FEATURE_ENABLED(x) ((*enabled_features) & (x))
 
 #define OPENTCO_PROTOCOL_HEADER 0x80
 #define OPENTCO_CRC8_FROM_HEADER (0x89)
@@ -59,15 +60,28 @@ void serial_process(void);
 #define OPENTCO_REGISTER_ACCESS_MODE_WRITE           0x00
 
 #define OPENTCO_OSD_REGISTER_STATUS                  0x00  // R/W
-//
-#define OPENTCO_OSD_REGISTER_VIDEO_FORMAT            0x01  // R/W
-#define OPENTCO_OSD_REGISTER_INVERT                  0x02  // R/W
+#define OPENTCO_OSD_REGISTER_SUPPORTED_FEATURES      0x01  // R
+#define OPENTCO_OSD_REGISTER_VIDEO_FORMAT            0x02  // R/W
 #define OPENTCO_OSD_REGISTER_BRIGHTNESS_BLACK        0x03  // R/W
 #define OPENTCO_OSD_REGISTER_BRIGHTNESS_WHITE        0x04  // R/W
+//
 #define OPENTCO_MAX_REGISTER                         0x0F
 
 #define OPENTCO_OSD_COMMAND_SPECIAL_SUB_STICKSTATUS  0x00
 #define OPENTCO_OSD_COMMAND_SPECIAL_SUB_SPECTRUM     0x01
 
+
+typedef enum {
+    OPENTCO_OSD_FEATURE_ENABLE                = (1 << 0),
+    OPENTCO_OSD_FEATURE_INVERT                = (1 << 1),
+    OPENTCO_OSD_FEATURE_BRIGHTNESS            = (1 << 2),
+    // 3..7
+    OPENTCO_OSD_FEATURE_RENDER_LOGO           = (1 << 8),
+    OPENTCO_OSD_FEATURE_RENDER_PILOTLOGO      = (1 << 9),
+    OPENTCO_OSD_FEATURE_RENDER_STICKS         = (1 << 10),
+    OPENTCO_OSD_FEATURE_RENDER_SPECTRUM       = (1 << 11),
+    OPENTCO_OSD_FEATURE_RENDER_CROSSHAIR      = (1 << 12)
+    // 12..15
+} opentcoOSDFeatures_e;
 
 #endif  // SERIAL_H_

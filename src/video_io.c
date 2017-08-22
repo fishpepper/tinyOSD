@@ -22,6 +22,7 @@
 #include "config.h"
 #include "macros.h"
 #include "delay.h"
+#include "serial.h"
 
 #include <libopencm3/stm32/rcc.h>
 #include <libopencm3/stm32/gpio.h>
@@ -153,7 +154,7 @@ void video_io_set_level_mv(uint8_t port, uint16_t mv){
         raw = 15;
     }
 
-    if (video_inverted) {
+    if (FEATURE_ENABLED(OPENTCO_OSD_FEATURE_INVERT)) {
         // switch colors
         //raw = 15 - raw;
         port = (port == WHITE) ? BLACK : WHITE;

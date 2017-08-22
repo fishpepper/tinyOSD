@@ -274,7 +274,9 @@ void video_main_loop(void) {
             page_to_fill = video_line.fill_request;
 
             // active or blank line?
-            if ((video_line.active_line < VIDEO_FIRST_ACTIVE_LINE) || (video_line.active_line > VIDEO_LAST_ACTIVE_LINE)){
+            if ( !FEATURE_ENABLED(OPENTCO_OSD_FEATURE_ENABLE) ||
+                 (video_line.active_line < VIDEO_FIRST_ACTIVE_LINE) ||
+                 (video_line.active_line > VIDEO_LAST_ACTIVE_LINE) ){
                 // inactive lines, render lank line and do some processing
                 video_render_blank(video_line.active_line);
             }else{
@@ -288,23 +290,27 @@ void video_main_loop(void) {
 #elif VIDEO_RENDER_ADCVAL
                 // render adc data
 #else
-                // normal ui
-                //video_armed_state |= (1<<3);
-                if (((video_armed_state & (1<<1)) == 0) &&
-                     (visible_line >= VIDEO_START_LINE_ANIMATION) &&
-                     (visible_line < VIDEO_END_LINE_ANIMATION)
-                   ) {
+                // render animated logo when enabled and never armed
+                bool render_logo =
+                    (*enabled_features & OPENTCO_OSD_FEATURE_RENDER_LOGO) &&
+                    ((video_armed_state & (1<<1)) == 0) &&
+                    (visible_line >= VIDEO_START_LINE_ANIMATION) &&
+                    (visible_line < VIDEO_END_LINE_ANIMATION);
+
+                if (render_logo) {
                     // never armed and inside ani window -> show animation
                     video_render_animation(page_to_fill, visible_line);
                 } else {
-
                     video_render_text(page_to_fill, visible_line);
 
-                    // render some more data when armed
-                    if (video_armed_state & (1<<0)) {
-                        // copter is armed
+                    // render some more data
+                    if (FEATURE_ENABLED(OPENTCO_OSD_FEATURE_RENDER_STICKS)) {
                         video_render_overlay_sticks(page_to_fill, visible_line);
+                    }
+                    if (FEATURE_ENABLED(OPENTCO_OSD_FEATURE_RENDER_PILOTLOGO)) {
                         video_render_pilot_logo(page_to_fill, visible_line);
+                    }
+                    if (FEATURE_ENABLED(OPENTCO_OSD_FEATURE_RENDER_SPECTRUM)) {
                         video_render_overlay_spectrum(page_to_fill, visible_line);
                     }
 
