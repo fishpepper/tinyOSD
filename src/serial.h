@@ -25,9 +25,16 @@
 void serial_init(void);
 void serial_process(void);
 
+#define SERIAL_TX_BUFFER_SIZE 128
+
 //#define PROTOCOL_FRAME_MAX_LEN 64
-extern const uint16_t *enabled_features;
-#define FEATURE_ENABLED(x) ((*enabled_features) & (x))
+extern const uint16_t *vtx_enabled_features;
+#define VTX_FEATURE_ENABLED(x) ((*vtx_enabled_features) & (x))
+
+typedef enum {
+    OSD_WRITE_MODE_VERTICAL = 0x0,
+    OSD_WRITE_MODE_HORIZONTAL
+} openTCOCommandOSDWriteMode_e;
 
 #define OPENTCO_PROTOCOL_HEADER 0x80
 #define OPENTCO_CRC8_FROM_HEADER (0x89)
@@ -48,28 +55,29 @@ extern const uint16_t *enabled_features;
 #define OPENTCO_DEVICE_VTX_RESPONSE                  (OPENTCO_DEVICE_RESPONSE | OPENTCO_DEVICE_VTX)
 #define OPENTCO_DEVICE_CAM_RESPONSE                  (OPENTCO_DEVICE_RESPONSE | OPENTCO_DEVICE_CAM)
 
+// GENERIC
+#define OPENTCO_REGISTER_ACCESS_MODE_READ            0x80
+#define OPENTCO_REGISTER_ACCESS_MODE_WRITE           0x00
+#define OPENTCO_MAX_REGISTER                         0x0F
+#define OPENTCO_GENERIC_COMMAND_REGISTER_ACCESS      0x00
 
-#define OPENTCO_OSD_COMMAND_REGISTER_ACCESS          0x00
+
+// OSD DEVICES
+#define OPENTCO_OSD_COMMAND_REGISTER_ACCESS          OPENTCO_GENERIC_COMMAND_REGISTER_ACCESS
 #define OPENTCO_OSD_COMMAND_FILL_REGION              0x01
 #define OPENTCO_OSD_COMMAND_WRITE                    0x02
 #define OPENTCO_OSD_COMMAND_WRITE_BUFFER_H           0x08
 #define OPENTCO_OSD_COMMAND_WRITE_BUFFER_V           0x09
 #define OPENTCO_OSD_COMMAND_SPECIAL                  0x0F
 
-#define OPENTCO_REGISTER_ACCESS_MODE_READ            0x80
-#define OPENTCO_REGISTER_ACCESS_MODE_WRITE           0x00
-
 #define OPENTCO_OSD_REGISTER_STATUS                  0x00  // R/W
 #define OPENTCO_OSD_REGISTER_SUPPORTED_FEATURES      0x01  // R
 #define OPENTCO_OSD_REGISTER_VIDEO_FORMAT            0x02  // R/W
 #define OPENTCO_OSD_REGISTER_BRIGHTNESS_BLACK        0x03  // R/W
 #define OPENTCO_OSD_REGISTER_BRIGHTNESS_WHITE        0x04  // R/W
-//
-#define OPENTCO_MAX_REGISTER                         0x0F
 
 #define OPENTCO_OSD_COMMAND_SPECIAL_SUB_STICKSTATUS  0x00
 #define OPENTCO_OSD_COMMAND_SPECIAL_SUB_SPECTRUM     0x01
-
 
 typedef enum {
     OPENTCO_OSD_FEATURE_ENABLE                = (1 << 0),
@@ -81,7 +89,37 @@ typedef enum {
     OPENTCO_OSD_FEATURE_RENDER_STICKS         = (1 << 10),
     OPENTCO_OSD_FEATURE_RENDER_SPECTRUM       = (1 << 11),
     OPENTCO_OSD_FEATURE_RENDER_CROSSHAIR      = (1 << 12)
-    // 12..15
+    // 13..15
 } opentcoOSDFeatures_e;
+
+// VTX DEVICES
+#define OPENTCO_VTX_COMMAND_REGISTER_ACCESS          OPENTCO_GENERIC_COMMAND_REGISTER_ACCESS
+#define OPENTCO_VTX_REGISTER_STATUS                  0x00  // R/W: B0 = enable, B1 = pitmode
+
+typedef enum {
+    OPENTCO_VTX_STATUS_ENABLE   = (1 << 0),
+    OPENTCO_VTX_STATUS_PITMODE  = (1 << 1)
+} opentcoVTXStatus_e;
+
+#define OPENTCO_VTX_REGISTER_BAND                    0x01  // R/W: 0 = A, 1 = B, 2 = E, 3 = F, 4 = R
+#define OPENTCO_VTX_REGISTER_CHANNEL                 0x02  // R/W: 0 = 1, ... 7 = 8
+#define OPENTCO_VTX_REGISTER_FREQUENCY               0x03  // R/W: 5000 ... 6000 MHz
+
+typedef enum {
+    OPENTCO_VTX_POWER_PITMODE = 0,
+    OPENTCO_VTX_POWER_5MW     = 1,
+    OPENTCO_VTX_POWER_10MW    = 2,
+    OPENTCO_VTX_POWER_25MW    = 3,
+    OPENTCO_VTX_POWER_100MW   = 4,
+    OPENTCO_VTX_POWER_200MW   = 5,
+    OPENTCO_VTX_POWER_500MW   = 6,
+    OPENTCO_VTX_POWER_600MW   = 7,
+    OPENTCO_VTX_POWER_800MW   = 8,
+    OPENTCO_VTX_POWER_COUNT
+} opentcoVTXPower_e;
+
+#define OPENTCO_VTX_REGISTER_SUPPORTED_POWER         0x04  // R/W: (1 << opentcoVTXPower_e)
+#define OPENTCO_VTX_REGISTER_POWER                   0x05  // R/W: opentcoVTXPower_e
+
 
 #endif  // SERIAL_H_

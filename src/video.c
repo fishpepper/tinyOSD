@@ -274,7 +274,7 @@ void video_main_loop(void) {
             page_to_fill = video_line.fill_request;
 
             // active or blank line?
-            if ( !FEATURE_ENABLED(OPENTCO_OSD_FEATURE_ENABLE) ||
+            if ( !VTX_FEATURE_ENABLED(OPENTCO_OSD_FEATURE_ENABLE) ||
                  (video_line.active_line < VIDEO_FIRST_ACTIVE_LINE) ||
                  (video_line.active_line > VIDEO_LAST_ACTIVE_LINE) ){
                 // inactive lines, render lank line and do some processing
@@ -292,7 +292,7 @@ void video_main_loop(void) {
 #else
                 // render animated logo when enabled and never armed
                 bool render_logo =
-                    (*enabled_features & OPENTCO_OSD_FEATURE_RENDER_LOGO) &&
+                    (*vtx_enabled_features & OPENTCO_OSD_FEATURE_RENDER_LOGO) &&
                     ((video_armed_state & (1<<1)) == 0) &&
                     (visible_line >= VIDEO_START_LINE_ANIMATION) &&
                     (visible_line < VIDEO_END_LINE_ANIMATION);
@@ -304,13 +304,13 @@ void video_main_loop(void) {
                     video_render_text(page_to_fill, visible_line);
 
                     // render some more data
-                    if (FEATURE_ENABLED(OPENTCO_OSD_FEATURE_RENDER_STICKS)) {
+                    if (VTX_FEATURE_ENABLED(OPENTCO_OSD_FEATURE_RENDER_STICKS)) {
                         video_render_overlay_sticks(page_to_fill, visible_line);
                     }
-                    if (FEATURE_ENABLED(OPENTCO_OSD_FEATURE_RENDER_PILOTLOGO)) {
+                    if (VTX_FEATURE_ENABLED(OPENTCO_OSD_FEATURE_RENDER_PILOTLOGO)) {
                         video_render_pilot_logo(page_to_fill, visible_line);
                     }
-                    if (FEATURE_ENABLED(OPENTCO_OSD_FEATURE_RENDER_SPECTRUM)) {
+                    if (VTX_FEATURE_ENABLED(OPENTCO_OSD_FEATURE_RENDER_SPECTRUM)) {
                         video_render_overlay_spectrum(page_to_fill, visible_line);
                     }
 

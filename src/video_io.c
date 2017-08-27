@@ -154,7 +154,7 @@ void video_io_set_level_mv(uint8_t port, uint16_t mv){
         raw = 15;
     }
 
-    if (FEATURE_ENABLED(OPENTCO_OSD_FEATURE_INVERT)) {
+    if (VTX_FEATURE_ENABLED(OPENTCO_OSD_FEATURE_INVERT)) {
         // switch colors
         //raw = 15 - raw;
         port = (port == WHITE) ? BLACK : WHITE;

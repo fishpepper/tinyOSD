@@ -30,21 +30,29 @@
 #include <stdint.h>
 #include <libopencm3/stm32/rcc.h>
 #include <libopencm3/stm32/gpio.h>
+#include <libopencm3/stm32/exti.h>
 #include <libopencm3/stm32/usart.h>
+#include <libopencmsis/core_cm3.h>
 
-
-static uint16_t video_register[OPENTCO_MAX_REGISTER];
-const uint16_t *enabled_features = &video_register[OPENTCO_OSD_REGISTER_STATUS];
-
+static uint16_t osd_register[OPENTCO_MAX_REGISTER];
+static uint16_t vtx_register[OPENTCO_MAX_REGISTER];
+const uint16_t *vtx_enabled_features = &osd_register[OPENTCO_OSD_REGISTER_STATUS];
 
 static void serial_init_gpio(void);
 static void serial_init_rcc(void);
 static void serial_init_uart(void);
+static void serial_init_interrupts(void);
 
-static void serial_protocol_process_data(void);
 static void serial_protocol_init(void);
-static void serial_protocol_write_register(uint8_t reg, uint16_t value);
-static void serial_protocol_read_register(uint8_t reg);
+
+static void serial_protocol_process_osd_data(void);
+static void serial_protocol_write_osd_register(uint8_t reg, uint16_t value);
+static void serial_protocol_read_osd_register(uint8_t reg);
+
+static void serial_protocol_process_vtx_data(void);
+static void serial_protocol_write_vtx_register(uint8_t reg, uint16_t value);
+static void serial_protocol_read_vtx_register(uint8_t reg);
+static void serial_putc(char ch);
 
 #define PROTOCOL_STATE_IDLE       0x00
 #define PROTOCOL_STATE_DEVICE_CMD 0x10
@@ -59,11 +67,12 @@ void serial_init(void) {
     serial_init_rcc();
     serial_init_gpio();
     serial_init_uart();
+    serial_init_interrupts();
 
     serial_protocol_init();
 }
 
-void serial_init_rcc(void) {
+static void serial_init_rcc(void) {
     debug_function_call();
 
     // crc module clock enable
@@ -74,7 +83,7 @@ void serial_init_rcc(void) {
     rcc_periph_clock_enable(SERIAL_UART_RCC);
 }
 
-void serial_init_gpio(void) {
+static void serial_init_gpio(void) {
     debug_function_call();
 
     // set rx and tx to AF
@@ -89,7 +98,7 @@ void serial_init_gpio(void) {
     gpio_set_output_options(SERIAL_GPIO, GPIO_OTYPE_PP, GPIO_OSPEED_50MHZ, SERIAL_TX_PIN);
 }
 
-void serial_init_uart(void) {
+static void serial_init_uart(void) {
     debug_function_call();
 
     // setup USART parameters
@@ -109,6 +118,12 @@ void serial_init_uart(void) {
     usart_enable(SERIAL_UART);
 }
 
+static void serial_init_interrupts(void) {
+    // enable irq
+    nvic_enable_irq(SERIAL_UART_IRQN);
+    nvic_set_priority(SERIAL_UART_IRQN, NVIC_PRIO_USART);
+}
+
 static volatile uint8_t  serial_protocol_crc;
 
 static uint8_t serial_protocol_data[OPENTCO_MAX_FRAME_LENGTH];
@@ -118,7 +133,7 @@ static uint8_t serial_protocol_state;
 
 static void serial_protocol_init(void) {
     // set supported features
-    video_register[OPENTCO_OSD_REGISTER_SUPPORTED_FEATURES] =
+    osd_register[OPENTCO_OSD_REGISTER_SUPPORTED_FEATURES] =
             OPENTCO_OSD_FEATURE_ENABLE |
             OPENTCO_OSD_FEATURE_INVERT |
             OPENTCO_OSD_FEATURE_BRIGHTNESS |
@@ -127,6 +142,10 @@ static void serial_protocol_init(void) {
             OPENTCO_OSD_FEATURE_RENDER_STICKS |
             OPENTCO_OSD_FEATURE_RENDER_SPECTRUM |
             OPENTCO_OSD_FEATURE_RENDER_CROSSHAIR;
+
+    vtx_register[OPENTCO_VTX_REGISTER_SUPPORTED_POWER] =
+            OPENTCO_VTX_POWER_PITMODE |
+            OPENTCO_VTX_POWER_25MW;
 
     serial_protocol_state = PROTOCOL_STATE_IDLE;
 }
@@ -182,7 +201,8 @@ void serial_process(void) {
             break;
 
         case(PROTOCOL_STATE_DEVICE_CMD):
-            if (((rx >> 4) & 0xF) == OPENTCO_DEVICE_OSD) {
+            if ((((rx >> 4) & 0xF) == OPENTCO_DEVICE_OSD) ||
+                (((rx >> 4) & 0xF) == OPENTCO_DEVICE_VTX) ) {
                 // valid device id
                 serial_protocol_state = PROTOCOL_STATE_COMMAND + (rx & 0x0F);
             } else {
@@ -241,7 +261,12 @@ void serial_process(void) {
                 // valid data!
                 // [0]        = command
                 // [1..(n-1)] = data
-                serial_protocol_process_data();
+                uint8_t dev = serial_protocol_data[0] >> 4;
+                if (dev == OPENTCO_DEVICE_OSD) {
+                    serial_protocol_process_osd_data();
+                } else if (dev == OPENTCO_DEVICE_VTX) {
+                    serial_protocol_process_vtx_data();
+                }
                 serial_protocol_state = PROTOCOL_STATE_IDLE;
             } else {
                 // crc error! 
@@ -258,7 +283,7 @@ void serial_process(void) {
 }
 
 
-static void serial_protocol_process_data(void) {
+static void serial_protocol_process_osd_data(void) {
     uint8_t len = 0;
 
     // fetch pointer to data
@@ -291,10 +316,10 @@ static void serial_protocol_process_data(void) {
 
             if (read) {
                 // read request
-                serial_protocol_read_register(reg);
+                serial_protocol_read_osd_register(reg);
             } else {
                 // write
-                serial_protocol_write_register(reg, value);
+                serial_protocol_write_osd_register(reg, value);
             }
             break;
         }
@@ -411,14 +436,55 @@ static void serial_protocol_process_data(void) {
     }
 }
 
-void serial_protocol_write_register(uint8_t reg, uint16_t value) {
+
+static void serial_protocol_process_vtx_data(void) {
+    uint8_t len = 0;
+
+    // fetch pointer to data
+    uint8_t *data = serial_protocol_data;
+
+    // extract command
+    uint8_t cmd = (*data++) & 0x0F;
+
+    // variable or fixed length?
+    if (cmd & 0x08) {
+        // variable length command
+        len = *data++;
+    }
+
+    switch(cmd) {
+        default:
+            // invalid, ignore
+            break;
+
+        case(OPENTCO_VTX_COMMAND_REGISTER_ACCESS):
+        {
+            // register access
+            uint8_t reg = *data++;
+            uint8_t value_lo = *data++;
+            uint8_t value_hi = *data++;
+            uint16_t value = (value_hi << 8) | value_lo;
+
+            uint8_t read = reg & OPENTCO_REGISTER_ACCESS_MODE_READ;
+            reg = reg & ~(OPENTCO_REGISTER_ACCESS_MODE_READ);
+
+            if (read) {
+                // read request
+                serial_protocol_read_vtx_register(reg);
+            } else {
+                // write
+                serial_protocol_write_vtx_register(reg, value);
+            }
+            break;
+        }
+    }
+}
+
+void serial_protocol_write_osd_register(uint8_t reg, uint16_t value) {
     uint16_t tmp;
 
     // check register address
     if (reg > OPENTCO_MAX_REGISTER) return;
-
-    // store value
-    video_register[reg] = value;
 
     switch(reg) {
         default:
@@ -430,8 +496,8 @@ void serial_protocol_write_register(uint8_t reg, uint16_t value) {
             break;
 
         case (OPENTCO_OSD_REGISTER_SUPPORTED_FEATURES):
-            // READONLY!
-            break;
+            // READONLY -> RETURN before reg write!
+            return;
 
         // brightness black, allow 0...500 mV
         case (OPENTCO_OSD_REGISTER_BRIGHTNESS_BLACK):
@@ -448,9 +514,76 @@ void serial_protocol_write_register(uint8_t reg, uint16_t value) {
             video_io_set_level_mv(WHITE, tmp);
             break;
     }
+
+    // store value
+    osd_register[reg] = value;
 }
 
-void serial_protocol_read_register(uint8_t reg) {
+static bool serial_tx_active = false;
+
+typedef struct {
+    uint8_t data[SERIAL_TX_BUFFER_SIZE];
+    uint8_t read;
+    uint8_t write;
+} serial_tx_buffer_t;
+
+serial_tx_buffer_t serial_tx_buffer;
+
+static void serial_putc(char ch) {
+    // disable interrupt trigger
+    usart_disable_tx_interrupt(SERIAL_UART);
+
+    // interrupt already enabled?
+    if (serial_tx_active) {
+        // alredy started to send, copy to buffer!
+        serial_tx_buffer.data[serial_tx_buffer.write] = ch;
+        serial_tx_buffer.write = (serial_tx_buffer.write + 1) % SERIAL_TX_BUFFER_SIZE;
+
+        // check if free space in buffer:
+        if (serial_tx_buffer.write == serial_tx_buffer.read) {
+            // no more space in buffer! this will loose some data!
+            return;
+        }
+    } else {
+        // no int active. send first byte and reset buffer indices
+        serial_tx_buffer.write  = serial_tx_buffer.read;
+
+        // mark as tx active
+        serial_tx_active = true;
+
+        // enable TXE int
+        USART_CR1(SERIAL_UART) |= USART_CR1_TXEIE;
+
+        // start transmission of first char
+        USART_TDR(SERIAL_UART) = (ch & USART_TDR_MASK);
+    }
+
+    // re enable interrupts
+    usart_enable_tx_interrupt(SERIAL_UART);
+}
+
+void SERIAL_UART_IRQ(void) {
+    if (USART_ISR(SERIAL_UART) & USART_ISR_TXE) {
+        // tx empty
+        if (serial_tx_buffer.read == serial_tx_buffer.write) {
+            // no data in fifo -> disable tx int:
+            USART_CR1(SERIAL_UART) &= ~(USART_CR1_TXEIE);
+
+            // mark sending as done
+            serial_tx_active = false;
+        } else {
+            // transmit data from fifo:
+            USART_TDR(SERIAL_UART) = (serial_tx_buffer.data[serial_tx_buffer.read] & USART_TDR_MASK);
+
+            // handle output pointer
+            serial_tx_buffer.read = (serial_tx_buffer.read+1) % SERIAL_TX_BUFFER_SIZE;
+        }
+    }
+}
+
+
+
+void serial_protocol_read_osd_register(uint8_t reg) {
     // check register address
     if (reg > OPENTCO_MAX_REGISTER) return;
 
@@ -458,8 +591,60 @@ void serial_protocol_read_register(uint8_t reg) {
     buffer[0] = OPENTCO_PROTOCOL_HEADER;
     buffer[1] = (OPENTCO_DEVICE_OSD_RESPONSE << 4) | OPENTCO_OSD_COMMAND_REGISTER_ACCESS;
     buffer[2] = reg;
-    buffer[3] = video_register[reg] & ~OPENTCO_REGISTER_ACCESS_MODE_READ;  // remove read flag 0x80
-    buffer[4] = (video_register[reg] >> 8) & 0xFF;
+    buffer[3] = osd_register[reg] & ~OPENTCO_REGISTER_ACCESS_MODE_READ;  // remove read flag 0x80
+    buffer[4] = (osd_register[reg] >> 8) & 0xFF;
+
+    uint8_t crc;
+    CRC8_INIT(crc, 0);
+    for(uint32_t i = 0; i < 5; i++) {
+        CRC8_UPDATE(crc, buffer[i]);
+    }
+    buffer[5] = crc;
+
+    // send response
+    for(uint32_t i = 0; i < 6; i++) {
+        //usart_send_blocking(SERIAL_UART, buffer[i]);
+        serial_putc(buffer[i]);
+    }
+}
+
+void serial_protocol_write_vtx_register(uint8_t reg, uint16_t value) {
+    //uint16_t tmp;
+
+    // check register address
+    if (reg > OPENTCO_MAX_REGISTER) return;
+
+    switch(reg) {
+        default:
+            break;
+
+        case (OPENTCO_VTX_REGISTER_STATUS):
+        case (OPENTCO_VTX_REGISTER_BAND):
+        case (OPENTCO_VTX_REGISTER_CHANNEL):
+        case (OPENTCO_VTX_REGISTER_FREQUENCY):
+        case (OPENTCO_VTX_REGISTER_POWER):
+            //FIXME: ADD HANDLER
+            break;
+
+        case (OPENTCO_VTX_REGISTER_SUPPORTED_POWER):
+            // READONLY -> RETURN before reg write
+            return;
+    }
+
+    // store value
+    vtx_register[reg] = value;
+}
+
+void serial_protocol_read_vtx_register(uint8_t reg) {
+    // check register address
+    if (reg > OPENTCO_MAX_REGISTER) return;
+
+    uint8_t buffer[6];
+    buffer[0] = OPENTCO_PROTOCOL_HEADER;
+    buffer[1] = (OPENTCO_DEVICE_VTX_RESPONSE << 4) | OPENTCO_VTX_COMMAND_REGISTER_ACCESS;
+    buffer[2] = reg;
+    buffer[3] = vtx_register[reg] & ~OPENTCO_REGISTER_ACCESS_MODE_READ;  // remove read flag 0x80
+    buffer[4] = (vtx_register[reg] >> 8) & 0xFF;
 
     uint8_t crc;
     CRC8_INIT(crc, 0);

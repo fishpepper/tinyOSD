@@ -48,6 +48,7 @@ void rtc6705_init(void) {
         delay_us(1);
     }
 
+#if DEBUG_PRINTS_ENABLED
    for (uint8_t i=0; i<=0xF; i++){
        timeout_delay_ms(100);
        uint32_t res = rtc6705_transfer(i, RTC6705_COMMAND_READ, 0x0000);
@@ -55,6 +56,7 @@ void rtc6705_init(void) {
        debug(" = 0x");
        debug_put_hex32(res); debug_put_newline();
    }
+#endif
 
     // wait for the rtc6705 to be ready
     // TODO: find correct value?!
