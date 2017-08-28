@@ -144,7 +144,7 @@ static void serial_protocol_init(void) {
             OPENTCO_OSD_FEATURE_RENDER_CROSSHAIR;
 
     vtx_register[OPENTCO_VTX_REGISTER_SUPPORTED_POWER] =
-            OPENTCO_VTX_POWER_PITMODE |
+            OPENTCO_VTX_POWER_NONE |
             OPENTCO_VTX_POWER_25MW;
 
     serial_protocol_state = PROTOCOL_STATE_IDLE;
