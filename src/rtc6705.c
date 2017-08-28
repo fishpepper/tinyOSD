@@ -60,7 +60,7 @@ void rtc6705_init(void) {
 
     // wait for the rtc6705 to be ready
     // TODO: find correct value?!
-    //timeout_delay_ms(300);
+    timeout_delay_ms(100);
 
    //F1 5740
    //
