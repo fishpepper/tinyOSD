@@ -24,6 +24,9 @@
 
 void rtc6705_init(void);
 
+void rtc6705_set_frequency(uint16_t f);
+void rtc6705_set_band_and_channel(uint8_t band, uint8_t channel);
+
 #define RTC6705_CS_HI() { GPIO_SET(RTC6705_GPIO, RTC6705_PIN_CS); }
 #define RTC6705_CS_LO() { GPIO_CLEAR(RTC6705_GPIO, RTC6705_PIN_CS); }
 
@@ -40,6 +43,16 @@ void rtc6705_init(void);
 
 #define RTC6705_COMMAND_READ  0
 #define RTC6705_COMMAND_WRITE 1
+
+#define RTC6705_FREQUENCY_MIN 5600
+#define RTC6705_FREQUENCY_MAX 5950
+
+#define RTC6705_FREQ_TO_A(__f) (((((uint64_t)(__f)*(uint64_t)1000000*(uint64_t)400)/(uint64_t)1000000) % 1024) / 16)
+#define RTC6705_FREQ_TO_N(__f) ((((uint64_t)(__f)*(uint64_t)1000000*(uint64_t)400)/(uint64_t)1000000) / 1024)
+#define RTC6705_FREQUENCY_TO_REGVAL(__f) ((RTC6705_FREQ_TO_N(__f)<<7) | RTC6705_FREQ_TO_A(__f))
+
+#define RTC6705_BAND_COUNT      5  // A B E F R
+#define RTC6705_CHANNEL_COUNT   8  // 1 2 3 4 5 6 7 8
 
 
 #endif  // RTC6705_H_

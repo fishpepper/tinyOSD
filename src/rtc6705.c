@@ -74,23 +74,95 @@ void rtc6705_init(void) {
     // 2*(N*64+A)*20KHZ = 5790
     //
     // N = 2261, A=46
-
     rtc6705_transfer(0x00, RTC6705_COMMAND_WRITE, 0x190); // default, 8MHZ clock / 20khz spacing
-    rtc6705_transfer(0x01, RTC6705_COMMAND_WRITE, (2261<<7) + 46);
-
-
-//1953 = 5GHZ
-//2343 = 6 GHZ
-/*
-    for(uint16_t i=1953; i<2343; i+=(2243-1953)/60) {
-        timeout_delay_ms(2000);
-        rtc6705_transfer(0x00, RTC6705_COMMAND_WRITE, 0x190); // default, 8MHZ clock / 20khz spacing
-        rtc6705_transfer(0x01, RTC6705_COMMAND_WRITE, (i<<7));
-        debug_put_uint16(i); debug_put_newline();
-    }*/
-  // while(1);
+    rtc6705_transfer(0x01, RTC6705_COMMAND_WRITE, RTC6705_FREQUENCY_TO_REGVAL(5790)); //(2261<<7) + 46);
 }
 
+// A B E F R
+static const uint32_t rtc6705_frequency_lookuptable[RTC6705_BAND_COUNT][RTC6705_CHANNEL_COUNT] = {
+    // BAND A
+    {
+        RTC6705_FREQUENCY_TO_REGVAL(5865), //A1
+        RTC6705_FREQUENCY_TO_REGVAL(5845), //A2
+        RTC6705_FREQUENCY_TO_REGVAL(5825), //A3
+        RTC6705_FREQUENCY_TO_REGVAL(5805), //A4
+        RTC6705_FREQUENCY_TO_REGVAL(5785), //A5
+        RTC6705_FREQUENCY_TO_REGVAL(5765), //A6
+        RTC6705_FREQUENCY_TO_REGVAL(5745), //A7
+        RTC6705_FREQUENCY_TO_REGVAL(5725), //A8
+    },
+    // BAND B
+    {
+        RTC6705_FREQUENCY_TO_REGVAL(5733),  // B1
+        RTC6705_FREQUENCY_TO_REGVAL(5752),  // B2
+        RTC6705_FREQUENCY_TO_REGVAL(5771),  // B3
+        RTC6705_FREQUENCY_TO_REGVAL(5790),  // B4
+        RTC6705_FREQUENCY_TO_REGVAL(5809),  // B5
+        RTC6705_FREQUENCY_TO_REGVAL(5828),  // B6
+        RTC6705_FREQUENCY_TO_REGVAL(5847),  // B7
+        RTC6705_FREQUENCY_TO_REGVAL(5866),  // B8
+    },
+    // BAND E
+    {
+        RTC6705_FREQUENCY_TO_REGVAL(5705),  // E1
+        RTC6705_FREQUENCY_TO_REGVAL(5685),  // E2
+        RTC6705_FREQUENCY_TO_REGVAL(5665),  // E3
+        RTC6705_FREQUENCY_TO_REGVAL(5645),  // E4
+        RTC6705_FREQUENCY_TO_REGVAL(5885),  // E5
+        RTC6705_FREQUENCY_TO_REGVAL(5905),  // E6
+        RTC6705_FREQUENCY_TO_REGVAL(5925),  // E7
+        RTC6705_FREQUENCY_TO_REGVAL(5945),  // E8
+    },
+    // BAND F
+    {
+        RTC6705_FREQUENCY_TO_REGVAL(5740),  // F1
+        RTC6705_FREQUENCY_TO_REGVAL(5760),  // F2
+        RTC6705_FREQUENCY_TO_REGVAL(5780),  // F3
+        RTC6705_FREQUENCY_TO_REGVAL(5800),  // F4
+        RTC6705_FREQUENCY_TO_REGVAL(5820),  // F5
+        RTC6705_FREQUENCY_TO_REGVAL(5840),  // F6
+        RTC6705_FREQUENCY_TO_REGVAL(5860),  // F7
+        RTC6705_FREQUENCY_TO_REGVAL(5880),  // F8
+    },
+    // BAND R
+    {
+        RTC6705_FREQUENCY_TO_REGVAL(5658),  // R1
+        RTC6705_FREQUENCY_TO_REGVAL(5695),  // R2
+        RTC6705_FREQUENCY_TO_REGVAL(5732),  // R3
+        RTC6705_FREQUENCY_TO_REGVAL(5769),  // R4
+        RTC6705_FREQUENCY_TO_REGVAL(5806),  // R5
+        RTC6705_FREQUENCY_TO_REGVAL(5843),  // R6
+        RTC6705_FREQUENCY_TO_REGVAL(5880),  // R7
+        RTC6705_FREQUENCY_TO_REGVAL(5917),  // R8
+    }
+};
+
+
+void rtc6705_set_band_and_channel(uint8_t band, uint8_t channel) {
+    // band is 0, 1, 2, 3, 4 = A B E F R
+    band = min(band, RTC6705_BAND_COUNT - 1);
+    // channel is 0..7 -> limit
+    channel = min(channel, RTC6705_CHANNEL_COUNT - 1);
+    // fetch value from lookuptable
+    uint32_t regval = rtc6705_frequency_lookuptable[band][channel];
+
+    // default, 8MHZ clock / 20khz spacing
+    rtc6705_transfer(0x00, RTC6705_COMMAND_WRITE, 0x190);
+    // send A and N
+    rtc6705_transfer(0x01, RTC6705_COMMAND_WRITE, regval);
+}
+
+void rtc6705_set_frequency(uint16_t f) {
+    // do not allow frequencies to low
+    f = max(f, RTC6705_FREQUENCY_MIN);
+    // do not allow frequencies to high
+    f = min(f, RTC6705_FREQUENCY_MAX);
+
+    // default, 8MHZ clock / 20khz spacing
+    rtc6705_transfer(0x00, RTC6705_COMMAND_WRITE, 0x190);
+    // send A and N
+    rtc6705_transfer(0x01, RTC6705_COMMAND_WRITE, RTC6705_FREQUENCY_TO_REGVAL(f));
+}
 
 static void rtc6705_init_rcc(void) {
     debug_function_call();

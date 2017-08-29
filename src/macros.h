@@ -9,8 +9,16 @@
 #define DEFINE_TO_STR(x) #x
 #define DEFINE_TO_STR_VAL(x) DEFINE_TO_STR(x)
 
-#define min(a, b) (((a) < (b)) ? (a):(b))
-#define max(a, b) (((a) > (b)) ? (a):(b))
+#define min(a,b) \
+  __extension__ ({ __typeof__ (a) _mina = (a); \
+  __typeof__ (b) _minb = (b); \
+  _mina < _minb ? _mina : _minb; })
+#define max(a,b) \
+  __extension__ ({ __typeof__ (a) _maxa = (a); \
+  __typeof__ (b) _maxb = (b); \
+  _maxa > _maxb ? _maxa : _maxb; })
+
+
 
 #ifdef UNUSED
 #elif defined(__GNUC__)

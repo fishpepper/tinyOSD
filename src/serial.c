@@ -25,6 +25,7 @@
 #include "led.h"
 #include "macros.h"
 #include "crc8.h"
+#include "rtc6705.h"
 #include "video_io.h"
 
 #include <stdint.h>
@@ -619,9 +620,16 @@ void serial_protocol_write_vtx_register(uint8_t reg, uint16_t value) {
             break;
 
         case (OPENTCO_VTX_REGISTER_STATUS):
-        case (OPENTCO_VTX_REGISTER_BAND):
-        case (OPENTCO_VTX_REGISTER_CHANNEL):
+            break;
+
+        case (OPENTCO_VTX_REGISTER_BAND_AND_CHANNEL):
+            rtc6705_set_band_and_channel((value & 0xFF), (value>>8));
+            break;
+
         case (OPENTCO_VTX_REGISTER_FREQUENCY):
+            rtc6705_set_frequency(value);
+            break;
+
         case (OPENTCO_VTX_REGISTER_POWER):
             //FIXME: ADD HANDLER
             break;

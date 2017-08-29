@@ -378,7 +378,8 @@ void video_main_loop(void) {
             uint32_t usage = (100 * (uint32_t)last_duration) /  _US_TO_CLOCKS(VIDEO_LINE_LEN);
 
             video_stats_line_usage_min  = min(video_stats_line_usage_min, usage);
-            video_stats_line_usage_max  = min(100, max(video_stats_line_usage_max, usage));
+            video_stats_line_usage_max  = max(video_stats_line_usage_max, usage);
+            video_stats_line_usage_max  = min(100, video_stats_line_usage_max);
 
         }
         // process incoming data
