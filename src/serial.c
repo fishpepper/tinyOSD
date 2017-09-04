@@ -144,10 +144,6 @@ static void serial_protocol_init(void) {
             OPENTCO_OSD_FEATURE_RENDER_SPECTRUM |
             OPENTCO_OSD_FEATURE_RENDER_CROSSHAIR;
 
-    vtx_register[OPENTCO_VTX_REGISTER_SUPPORTED_POWER] =
-            OPENTCO_VTX_POWER_NONE |
-            OPENTCO_VTX_POWER_25MW;
-
     serial_protocol_state = PROTOCOL_STATE_IDLE;
 }
 
@@ -635,18 +631,15 @@ void serial_protocol_write_vtx_register(uint8_t reg, uint16_t value) {
             break;
 
         case (OPENTCO_VTX_REGISTER_SUPPORTED_POWER):
-            // READONLY -> RETURN before reg write
-            return;
+            // writing this can be used to set requested powerlevel
+            break;
     }
 
     // store value
     vtx_register[reg] = value;
 }
 
-void serial_protocol_read_vtx_register(uint8_t reg) {
-    // check register address
-    if (reg > OPENTCO_MAX_REGISTER) return;
-
+static void serial_protocol_vtx_send_response_uint16(uint8_t reg) {
     uint8_t buffer[6];
     buffer[0] = OPENTCO_PROTOCOL_HEADER;
     buffer[1] = (OPENTCO_DEVICE_VTX_RESPONSE << 4) | OPENTCO_VTX_COMMAND_REGISTER_ACCESS;
@@ -665,6 +658,62 @@ void serial_protocol_read_vtx_register(uint8_t reg) {
     for(uint32_t i = 0; i < 6; i++) {
         usart_send_blocking(SERIAL_UART, buffer[i]);
     }
+}
+
+#define VTX_MAX_POWERLEVEL 3
+
+static void serial_protocol_vtx_send_response_stringarray(uint8_t reg) {
+    uint8_t buffer[6 + OPENTCO_MAX_STRING_LENGTH];
+    buffer[0] = OPENTCO_PROTOCOL_HEADER;
+    buffer[1] = (OPENTCO_DEVICE_VTX_RESPONSE << 4) | OPENTCO_VTX_COMMAND_REGISTER_ACCESS;
+    buffer[2] = reg;
+
+    // keep track of requested register
+    uint32_t level = vtx_register[reg & 0x0F];
+    vtx_register[reg & 0x0F]++;
+
+    // add current index and max
+    buffer[3] = (VTX_MAX_POWERLEVEL << 4) | (level & 0x0F);
+
+    // add string
+    if (level == 0) {
+        buffer[4] = '-'; buffer[5] = '-'; buffer[6] = '-';
+    } else if (level == 1) {
+        buffer[4] = '1'; buffer[5] = '0'; buffer[6] = ' ';
+    } else {
+        buffer[4] = '2'; buffer[5] = '5'; buffer[6] = ' ';
+    }
+
+    // buffer 4 .. (4 + OPENTCO_MAX_STRING_LENGTH) should be sent
+    for (uint32_t i = 3; i < OPENTCO_MAX_STRING_LENGTH; i++) {
+        buffer[4 + i] = 0;
+    }
+
+    uint8_t crc;
+    CRC8_INIT(crc, 0);
+    for(uint32_t i = 0; i < 4 + OPENTCO_MAX_STRING_LENGTH; i++) {
+        CRC8_UPDATE(crc, buffer[i]);
+    }
+    buffer[4 + OPENTCO_MAX_STRING_LENGTH] = crc;
+
+    // send response
+    for(uint32_t i = 0; i < 4 + OPENTCO_MAX_STRING_LENGTH + 1; i++) {
+        usart_send_blocking(SERIAL_UART, buffer[i]);
+    }
+}
+
+void serial_protocol_read_vtx_register(uint8_t reg) {
+    // check register address
+    if (reg > OPENTCO_MAX_REGISTER) return;
+
+    if (reg == OPENTCO_VTX_REGISTER_SUPPORTED_POWER) {
+        // send string array response
+        serial_protocol_vtx_send_response_stringarray(reg);
+    } else {
+        // send uint16 response
+        serial_protocol_vtx_send_response_uint16(reg);
+    }
+
 }
 
 

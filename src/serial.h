@@ -42,6 +42,8 @@ typedef enum {
 #define OPENTCO_MAX_DATA_LENGTH       60
 #define OPENTCO_MAX_FRAME_LENGTH     (OPENTCO_MAX_DATA_LENGTH + 4)
 
+#define OPENTCO_MAX_STRING_LENGTH 16
+
 // 0x01..0x07 = valid device ids
 #define OPENTCO_DEVICE_OSD                           0x00
 #define OPENTCO_DEVICE_VTX                           0x01
@@ -104,21 +106,9 @@ typedef enum {
 #define OPENTCO_VTX_REGISTER_BAND_AND_CHANNEL        0x01  // R/W ((CH << 8) | BAND) with CH = 0..7, BAND 0 = A, 1 = B, 2 = E, 3 = F, 4 = R
 #define OPENTCO_VTX_REGISTER_FREQUENCY               0x02  // R/W: 5000 ... 6000 MHz
 
-typedef enum {
-    OPENTCO_VTX_POWER_NONE    = (1 << 0),
-    OPENTCO_VTX_POWER_5MW     = (1 << 1),
-    OPENTCO_VTX_POWER_10MW    = (1 << 2),
-    OPENTCO_VTX_POWER_25MW    = (1 << 3),
-    OPENTCO_VTX_POWER_100MW   = (1 << 4),
-    OPENTCO_VTX_POWER_200MW   = (1 << 5),
-    OPENTCO_VTX_POWER_500MW   = (1 << 6),
-    OPENTCO_VTX_POWER_600MW   = (1 << 7),
-    OPENTCO_VTX_POWER_800MW   = (1 << 8)
-} opentcoVTXPower_e;
-
 #define OPENTCO_VTX_POWER_COUNT 9
 
-#define OPENTCO_VTX_REGISTER_SUPPORTED_POWER         0x04  // R/W: (1 << opentcoVTXPower_e)
+#define OPENTCO_VTX_REGISTER_SUPPORTED_POWER         0x04  // R/W: STRIGN ARRAY response
 #define OPENTCO_VTX_REGISTER_POWER                   0x05  // R/W: opentcoVTXPower_e
 
 
