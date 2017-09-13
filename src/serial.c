@@ -53,7 +53,7 @@ static void serial_protocol_read_osd_register(uint8_t reg);
 static void serial_protocol_process_vtx_data(void);
 static void serial_protocol_write_vtx_register(uint8_t reg, uint16_t value);
 static void serial_protocol_read_vtx_register(uint8_t reg);
-static void serial_putc(char ch);
+//static void serial_putc(char ch);
 
 #define PROTOCOL_STATE_IDLE       0x00
 #define PROTOCOL_STATE_DEVICE_CMD 0x10
@@ -526,7 +526,7 @@ typedef struct {
 
 serial_tx_buffer_t serial_tx_buffer;
 
-static void serial_putc(char ch) {
+/*static void serial_putc(char ch) {
     // disable interrupt trigger
     usart_disable_tx_interrupt(SERIAL_UART);
 
@@ -557,7 +557,7 @@ static void serial_putc(char ch) {
 
     // re enable interrupts
     usart_enable_tx_interrupt(SERIAL_UART);
-}
+}*/
 
 void SERIAL_UART_IRQ(void) {
     if (USART_ISR(SERIAL_UART) & USART_ISR_TXE) {
@@ -580,7 +580,7 @@ void SERIAL_UART_IRQ(void) {
 
 
 
-void serial_protocol_read_osd_register(uint8_t reg) {
+/*void serial_protocol_read_osd_register(uint8_t reg) {
     // check register address
     if (reg > OPENTCO_MAX_REGISTER) return;
 
@@ -603,7 +603,95 @@ void serial_protocol_read_osd_register(uint8_t reg) {
         //usart_send_blocking(SERIAL_UART, buffer[i]);
         serial_putc(buffer[i]);
     }
+}*/
+
+#define OPENTCO_TYPE_UINT16   2
+#define OPENTCO_TYPE_TEXT_SELECTION 9
+
+static uint8_t opentco_response_buffer[OPENTCO_MAX_DATA_LENGTH];
+static uint8_t *opentco_response_buffer_ptr;
+
+static void opentco_response_init_buffer(void) {
+    opentco_response_buffer_ptr =  opentco_response_buffer;
 }
+
+static void opentco_response_add_uint16(uint16_t val) {
+    *opentco_response_buffer_ptr++ = val & 0xFF;
+    *opentco_response_buffer_ptr++ = (val >> 8) & 0xFF;
+}
+
+static void opentco_response_add_uint8(uint8_t val) {
+    *opentco_response_buffer_ptr++ = val;
+}
+
+static void opentco_response_add_string(char *val) {
+    while (*val) {
+        *opentco_response_buffer_ptr++ = *val++;
+    }
+}
+
+
+static void opentco_response_store_length(void) {
+    opentco_response_buffer[3] = opentco_response_buffer_ptr - &opentco_response_buffer[3] - 1;
+}
+
+static void opentco_response_add_crc(void) {
+    uint8_t crc;
+    CRC8_INIT(crc, 0);
+    uint32_t payload_len = opentco_response_buffer_ptr - &opentco_response_buffer[0];
+
+    for(uint32_t i = 0; i < (payload_len); i++) {
+        CRC8_UPDATE(crc, opentco_response_buffer[i]);
+    }
+    opentco_response_add_uint8(crc);
+}
+
+static void opentco_response_send(void) {
+    uint32_t payload_len = opentco_response_buffer_ptr - &opentco_response_buffer[0];
+
+    for(uint32_t i = 0; i < payload_len; i++) {
+        usart_send_blocking(SERIAL_UART, opentco_response_buffer[i]);
+    }
+}
+
+static void serial_protocol_read_osd_register(uint8_t reg) {
+    opentco_response_init_buffer();
+
+    // remove read flag
+    reg = reg & ~OPENTCO_REGISTER_ACCESS_MODE_READ;
+
+    // add header
+    opentco_response_add_uint8(OPENTCO_PROTOCOL_HEADER);
+
+    // add response code
+    opentco_response_add_uint8((OPENTCO_DEVICE_OSD_RESPONSE << 4) | OPENTCO_OSD_COMMAND_REGISTER_ACCESS);
+
+    // add register
+    opentco_response_add_uint8(reg);
+
+    // skip length (will be added later)
+    opentco_response_add_uint8(0);
+
+    // add 16bit value
+    opentco_response_add_uint16(osd_register[reg]);
+
+    // add string value
+    switch (reg) {
+        default:
+            opentco_response_add_string("NO_DESC|");
+            break;
+    }
+
+    // update length
+    opentco_response_store_length();
+
+    // calc and add CRC
+    opentco_response_add_crc();
+
+    // send it
+    opentco_response_send();
+}
+
 
 void serial_protocol_write_vtx_register(uint8_t reg, uint16_t value) {
     //uint16_t tmp;
@@ -618,20 +706,28 @@ void serial_protocol_write_vtx_register(uint8_t reg, uint16_t value) {
         case (OPENTCO_VTX_REGISTER_STATUS):
             break;
 
-        case (OPENTCO_VTX_REGISTER_BAND_AND_CHANNEL):
-            rtc6705_set_band_and_channel((value & 0xFF), (value>>8));
+        case (OPENTCO_VTX_REGISTER_BAND):
+        case (OPENTCO_VTX_REGISTER_CHANNEL):
+            if (vtx_register[OPENTCO_VTX_REGISTER_STATUS] & OPENTCO_VTX_STATUS_ENABLE) {
+                // abort if tx is active!
+                return;
+            }
+            vtx_register[reg] = value;
+            uint8_t band    = vtx_register[OPENTCO_VTX_REGISTER_BAND];
+            uint8_t channel = vtx_register[OPENTCO_VTX_REGISTER_CHANNEL];
+            rtc6705_set_band_and_channel(band, channel);
             break;
 
         case (OPENTCO_VTX_REGISTER_FREQUENCY):
+            if (vtx_register[OPENTCO_VTX_REGISTER_STATUS] & OPENTCO_VTX_STATUS_ENABLE) {
+                // abort if tx is active!
+                return;
+            }
             rtc6705_set_frequency(value);
             break;
 
         case (OPENTCO_VTX_REGISTER_POWER):
             //FIXME: ADD HANDLER
-            break;
-
-        case (OPENTCO_VTX_REGISTER_SUPPORTED_POWER):
-            // writing this can be used to set requested powerlevel
             break;
     }
 
@@ -639,153 +735,53 @@ void serial_protocol_write_vtx_register(uint8_t reg, uint16_t value) {
     vtx_register[reg] = value;
 }
 
-static void serial_protocol_vtx_send_response_uint16(uint8_t reg) {
-    uint8_t buffer[6];
-    buffer[0] = OPENTCO_PROTOCOL_HEADER;
-    buffer[1] = (OPENTCO_DEVICE_VTX_RESPONSE << 4) | OPENTCO_VTX_COMMAND_REGISTER_ACCESS;
-    buffer[2] = reg;
-    buffer[3] = vtx_register[reg] & ~OPENTCO_REGISTER_ACCESS_MODE_READ;  // remove read flag 0x80
-    buffer[4] = (vtx_register[reg] >> 8) & 0xFF;
 
-    uint8_t crc;
-    CRC8_INIT(crc, 0);
-    for(uint32_t i = 0; i < 5; i++) {
-        CRC8_UPDATE(crc, buffer[i]);
-    }
-    buffer[5] = crc;
+static void serial_protocol_read_vtx_register(uint8_t reg) {
+    opentco_response_init_buffer();
 
-    // send response
-    for(uint32_t i = 0; i < 6; i++) {
-        usart_send_blocking(SERIAL_UART, buffer[i]);
-    }
-}
+    // remove read flag
+    reg = reg & ~OPENTCO_REGISTER_ACCESS_MODE_READ;
 
-#define VTX_MAX_POWERLEVEL 3
+    // add header
+    opentco_response_add_uint8(OPENTCO_PROTOCOL_HEADER);
 
-static void serial_protocol_vtx_send_response_stringarray(uint8_t reg) {
-    uint8_t buffer[6 + OPENTCO_MAX_STRING_LENGTH];
-    buffer[0] = OPENTCO_PROTOCOL_HEADER;
-    buffer[1] = (OPENTCO_DEVICE_VTX_RESPONSE << 4) | OPENTCO_VTX_COMMAND_REGISTER_ACCESS;
-    buffer[2] = reg;
+    // add response code
+    opentco_response_add_uint8((OPENTCO_DEVICE_VTX_RESPONSE << 4) | OPENTCO_VTX_COMMAND_REGISTER_ACCESS);
 
-    // keep track of requested register
-    uint32_t level = vtx_register[reg & 0x0F];
-    vtx_register[reg & 0x0F]++;
+    // add register
+    opentco_response_add_uint8(reg);
 
-    // add current index and max
-    buffer[3] = (VTX_MAX_POWERLEVEL << 4) | (level & 0x0F);
+    // skip length (will be added later)
+    opentco_response_add_uint8(0);
 
-    // add string
-    if (level == 0) {
-        buffer[4] = '-'; buffer[5] = '-'; buffer[6] = '-';
-    } else if (level == 1) {
-        buffer[4] = '1'; buffer[5] = '0'; buffer[6] = ' ';
-    } else {
-        buffer[4] = '2'; buffer[5] = '5'; buffer[6] = ' ';
-    }
+    // add 16bit value
+    opentco_response_add_uint16(vtx_register[reg]);
 
-    // buffer 4 .. (4 + OPENTCO_MAX_STRING_LENGTH) should be sent
-    for (uint32_t i = 3; i < OPENTCO_MAX_STRING_LENGTH; i++) {
-        buffer[4 + i] = 0;
-    }
-
-    uint8_t crc;
-    CRC8_INIT(crc, 0);
-    for(uint32_t i = 0; i < 4 + OPENTCO_MAX_STRING_LENGTH; i++) {
-        CRC8_UPDATE(crc, buffer[i]);
-    }
-    buffer[4 + OPENTCO_MAX_STRING_LENGTH] = crc;
-
-    // send response
-    for(uint32_t i = 0; i < 4 + OPENTCO_MAX_STRING_LENGTH + 1; i++) {
-        usart_send_blocking(SERIAL_UART, buffer[i]);
-    }
-}
-
-void serial_protocol_read_vtx_register(uint8_t reg) {
-    // check register address
-    if (reg > OPENTCO_MAX_REGISTER) return;
-
-    if (reg == OPENTCO_VTX_REGISTER_SUPPORTED_POWER) {
-        // send string array response
-        serial_protocol_vtx_send_response_stringarray(reg);
-    } else {
-        // send uint16 response
-        serial_protocol_vtx_send_response_uint16(reg);
-    }
-
-}
-
-
-
-/*
-                switch(serial_protocol_frame_command) {
-                    default:
-                        break;
-
-                    case(TINYOSD_COMMAND_SET_STATUS):
-                        // SET STATUS 
-                        break;
-
-                    case(TINYOSD_COMMAND_FILL_SCREEN):
-                        // fill screen with given value
-                        for (uint8_t y=0; y<VIDEO_CHAR_BUFFER_HEIGHT; y++) {
-                            for (uint8_t x=0; x<VIDEO_CHAR_BUFFER_WIDTH; x++) {
-                                video_char_buffer[y][x] = serial_protocol_frame_data[0];
-                            }
-                        }
-                        break;
-                    
-                    case(TINYOSD_COMMAND_WRITE_PAGE_0):
-                    case(TINYOSD_COMMAND_WRITE_PAGE_1):
-                    case(TINYOSD_COMMAND_WRITE_PAGE_2):
-                    case(TINYOSD_COMMAND_WRITE_PAGE_3):
-                        // thos cammands write to page 0, 1, 2, or 3
-                        {
-                            if (serial_protocol_frame_len >= 2) {
-                                // at least 1 byte command + 1 byte addressoffset + 1 data byte is required
-                                uint16_t p = ((serial_protocol_frame_command - TINYOSD_COMMAND_WRITE_PAGE_0) << 8) | (serial_protocol_frame_data[0] & 0xFF);
-                                uint8_t  len = serial_protocol_frame_len - 1;
-
-                                // make sure not to exceed the buffer
-                                if ((p + len) < VIDEO_CHAR_BUFFER_WIDTH * VIDEO_CHAR_BUFFER_HEIGHT){
-                                    // safe to process
-                                    uint8_t *data_buf_ptr = (uint8_t*)&serial_protocol_frame_data[1];
-                                    uint8_t *char_buf_ptr = &video_char_buffer[0][0];
-
-                                    // add adress offset:
-                                    char_buf_ptr += p;
-
-                                    // set all bytes
-                                    while (len--) {
-                                        *char_buf_ptr++ = *data_buf_ptr++;
-                                    }
-                                }
-                            }
-                        }
-                        break;
-
-                    case(TINYOSD_COMMAND_WRITE_STICKDATA):
-                        // set AETR stick pos
-                        video_stick_data[0] = serial_protocol_frame_data[0];
-                        video_stick_data[1] = serial_protocol_frame_data[1];
-                        video_stick_data[2] = serial_protocol_frame_data[2];
-                        video_stick_data[3] = serial_protocol_frame_data[3];
-                        video_armed_state =  serial_protocol_frame_data[4];
-                        video_uart_checksum_err = video_armed_state;
-                        break;
-                }
-            }else{
-                video_uart_checksum_err++;
-                if (rx == SERIAL_PROTOCOL_HEADER) {
-                    serial_protocol_state = SERIAL_PROTOCOL_STATE_LEN;
-                    CRC8_INIT(serial_protocol_frame_crc, 0);
-                    CRC8_UPDATE(serial_protocol_frame_crc, rx);
-                    break;
-                }
-            }
-
-            // done!
-            serial_protocol_state = SERIAL_PROTOCOL_STATE_IDLE;
+    // add string value
+    switch (reg) {
+        default:
+            opentco_response_add_string("NO_DESC|");
             break;
-*/
+
+        case(OPENTCO_VTX_REGISTER_POWER):
+            opentco_response_add_string("POWER LEVEL:10 |25 |");
+            break;
+
+        case(OPENTCO_VTX_REGISTER_BAND):
+            opentco_response_add_string("BAND:Boscam A|Boscam B|Boscam E|FatShark|RaceBand|"); // BE CAREFUL WITH LONG STR!
+            break;
+
+        case(OPENTCO_VTX_REGISTER_CHANNEL):
+            opentco_response_add_string("CHANNEL:1|2|3|4|5|6|7|8|");
+            break;
+    }
+
+    // update length
+    opentco_response_store_length();
+
+    // calc and add CRC
+    opentco_response_add_crc();
+
+    // send it
+    opentco_response_send();
+}

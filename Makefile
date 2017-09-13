@@ -57,6 +57,9 @@ OBJCOPY		:= $(PREFIX)-objcopy
 OBJDUMP		:= $(PREFIX)-objdump
 GDB		:= $(PREFIX)-gdb
 STFLASH		= $(shell which st-flash)
+ifneq ($(STSERIAL),)
+STFLASH         += --serial $(STSERIAL) 
+endif
 STYLECHECK	:= /checkpatch.pl
 STYLECHECKFLAGS	:= --no-tree -f --terse --mailback
 STYLECHECKFILES	:= $(shell find . -name '*.[ch]')
@@ -237,12 +240,12 @@ endif
 
 
 st-erase : 
-	st-flash erase
+	$(STFLASH) erase
 
-st-flasherase : sterase stflash
+st-flasherase : st-erase st-flash
 
 st-flash : $(BIN_DIR)/$(TARGET).bin
-	st-flash --reset write $(BIN_DIR)/$(TARGET).bin 0x8000000 
+	$(STFLASH) --reset write $(BIN_DIR)/$(TARGET).bin 0x8000000 
 
 openocd-gdb : $(BIN_DIR)/$(TARGET).elf
 	openocd -f interface/stlink-v2.cfg -f target/stm32f3x.cfg & $(GDB) $(BIN_DIR)/$(TARGET).elf -ex "target remote localhost:3333" -ex "load"

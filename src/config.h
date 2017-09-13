@@ -2,7 +2,7 @@
 // RM: http://www.st.com/resource/en/reference_manual/dm00094350.pdf
 // DS: http://www.keil.com/dd/docs/datashts/st/stm32f3xx/dm00093332.pdf
 
-#define DEBUG_PRINTS_ENABLED 0
+#define DEBUG_PRINTS_ENABLED 1
 
 #define CAMOSD_RUNCAM 0
 #define CAMOSD_VM275  1

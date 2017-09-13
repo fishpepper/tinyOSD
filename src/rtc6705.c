@@ -62,20 +62,13 @@ void rtc6705_init(void) {
     // TODO: find correct value?!
     timeout_delay_ms(100);
 
-   //F1 5740
-   //
-   // 2*(N*64+A)*20KHZ = 5740
-   //
-   // N = 2242, A=12
-   //rtc6705_transfer(0x01, RTC6705_COMMAND_WRITE, (2242<<7) | 12);
-
-    //B4 5790
-    //
+    // start on B4 5790
     // 2*(N*64+A)*20KHZ = 5790
-    //
     // N = 2261, A=46
-    rtc6705_transfer(0x00, RTC6705_COMMAND_WRITE, 0x190); // default, 8MHZ clock / 20khz spacing
-    rtc6705_transfer(0x01, RTC6705_COMMAND_WRITE, RTC6705_FREQUENCY_TO_REGVAL(5790)); //(2261<<7) + 46);
+    //rtc6705_transfer(0x00, RTC6705_COMMAND_WRITE, 0x190); // default, 8MHZ clock / 20khz spacing
+    //rtc6705_transfer(0x01, RTC6705_COMMAND_WRITE, RTC6705_FREQUENCY_TO_REGVAL(5790)); //(2261<<7) + 46);
+    // B4
+    rtc6705_set_band_and_channel(1, 3);
 }
 
 // A B E F R
@@ -136,6 +129,7 @@ static const uint32_t rtc6705_frequency_lookuptable[RTC6705_BAND_COUNT][RTC6705_
         RTC6705_FREQUENCY_TO_REGVAL(5917),  // R8
     }
 };
+
 
 
 void rtc6705_set_band_and_channel(uint8_t band, uint8_t channel) {
