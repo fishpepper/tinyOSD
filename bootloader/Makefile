@@ -121,7 +121,7 @@ elf: $(BIN_DIR)/$(TARGET).elf
 bin: $(BIN_DIR)/$(TARGET).bin
 hex: $(BIN_DIR)/$(TARGET).hex
 srec: $(BIN_DIR)/$(TARGET).srec
-list: $(BIN_DIR)/$(TARGET).list
+lst: $(BIN_DIR)/$(TARGET).lst
 
 images: $(BIN_DIR)/$(TARGET).images
 flash: $(BIN_DIR)/$(TARGET).flash
@@ -256,6 +256,6 @@ submodules:
 	@git submodule update --init -- libopencm3
 
 
-.PHONY: images clean stylecheck styleclean elf bin hex srec list submodules bin_dir obj_dir stylecheck
+.PHONY: images clean stylecheck styleclean elf bin hex srec lst submodules bin_dir obj_dir stylecheck
 
 -include $(OBJS:.o=.d)

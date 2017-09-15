@@ -61,8 +61,8 @@ static uint8_t bootloader_secret_key[] = {
 };
 
 static uint8_t bootloader_magic_signature[] = {
-    0xAF, 0xFE, 0xDE, 0xAD, 0xBA, 0xBE, 0x33, 0x44,
-    0x55, 0x66, 0x77, 0x88, 0x99, 0xaa, 0xbb, 0xcc
+    0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
+    0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F
 };
 
 // initial IV
@@ -79,7 +79,7 @@ void bootloader_init(void) {
 
 static bool bootloader_valid_address(uint32_t address) {
     // verify if this is within allowed memory bounds:
-    if (address < (BOOTLOADER_APP_START)) {
+    if (address < (BOOTLOADER_MAGIC_PAGE)) {
         // inside bootloader space -> invalid!
         DEBUG_PRINTF("invalid address 0x%X (inside bootloader)\n", address);
         return false;
@@ -126,8 +126,8 @@ static void bootloader_decrypt_flash(void) {
     uint8_t *key_ptr = bootloader_secret_key;
     uint8_t *iv_ptr  = bootloader_iv;
 
-    uint32_t flash_address = BOOTLOADER_APP_START;
-    bool last_page = false;
+    uint32_t flash_address = BOOTLOADER_MAGIC_PAGE;
+    //bool last_page = false;
 
     while (flash_address < BOOTLOADER_APP_END) {
         DEBUG_PRINTF("decrypting 0x%X\n", flash_address);
@@ -144,11 +144,11 @@ static void bootloader_decrypt_flash(void) {
         // decrypt buffer
         aes_cbc_decrypt(decrypted_buffer, flash_ptr, buffer_len, key_ptr, iv_ptr);
 
-        if (flash_address == (BOOTLOADER_APP_END - DEVICE_PAGE_SIZE)) {
-            // the last 32 bytes store crc and a magic signature
-            // store "sucessfully decrypted" signature:
+        if (flash_address == (BOOTLOADER_MAGIC_PAGE)) {
+            // the 16 bytes after the CRC hold a magic signature
+            // -> store "sucessfully decrypted" signature:
             uint8_t *magic_ptr = bootloader_magic_signature;
-            for (uint32_t a = DEVICE_PAGE_SIZE-32; a < DEVICE_PAGE_SIZE-16; a++) {
+            for (uint32_t a = 4; a < 4 + 16; a++) {
                 decrypted_buffer[a] = *magic_ptr++;
             }
         }
@@ -172,12 +172,13 @@ static void bootloader_decrypt_flash(void) {
 }
 
 static bool bootloader_flash_verify_signature(void) {
+    bool valid_signature = true;
+
     // check if the flash content is encoded:
-    uint8_t *flash_signature = FLASH_U32_PTR(BOOTLOADER_APP_END - 32);
+    uint8_t *flash_signature = FLASH_U8_PTR(BOOTLOADER_MAGIC_PAGE + FLASH_SIGNATURE_OFFSET);
     uint8_t *exp_signature   = bootloader_magic_signature;
 
-    // compare:
-    bool valid_signature = true;
+    // compare signature:
     for(uint32_t i = 0; i < 16; i++) {
         if ((*flash_signature) != (*exp_signature)) {
             // do not abort here to make side channel attacks
@@ -188,6 +189,7 @@ static bool bootloader_flash_verify_signature(void) {
         exp_signature++;
     }
 
+
     if (!valid_signature) {
         DEBUG_PRINTF("flash is encrypted\n");
     } else {
@@ -196,35 +198,65 @@ static bool bootloader_flash_verify_signature(void) {
     return valid_signature;
 }
 
+static bool bootloader_verify_device_id(void) {
+    bool valid_id = true;
+
+    // compare unique device id
+    uint8_t *flash_device_id    = FLASH_U8_PTR(BOOTLOADER_MAGIC_PAGE + FLASH_DEVICE_ID_OFFSET);
+    uint8_t *expected_device_id = FLASH_U8_PTR(0x1FFF7A10);
+    for(uint32_t i = 0; i < 12; i++) {
+        if ((*flash_device_id) != (*expected_device_id)) {
+            // do not abort here to make side channel attacks
+            // a bit more complex
+            valid_id = false;
+        }
+        flash_device_id++;
+        expected_device_id++;
+    }
+
+    if (!valid_id) {
+        DEBUG_PRINTF("invalid device id\n");
+    }
+    return valid_id;
+}
+
 static bool bootloader_verify_flash(void) {
     // expect a valid crc32 sum on last flash word:
-    uint32_t flash_crc = *FLASH_U32_PTR(BOOTLOADER_APP_END - 4);
+    uint32_t *flash_crc = FLASH_U32_PTR(BOOTLOADER_MAGIC_PAGE + FLASH_CRC_OFFSET);
 
-    // calc crc over flash content:
+    // calc crc over app content:
     uint32_t *app_start = FLASH_U32_PTR(BOOTLOADER_APP_START);
-    uint32_t app_len    = BOOTLOADER_APP_END - BOOTLOADER_APP_START - 32;
+    uint32_t app_len    = BOOTLOADER_APP_END - (BOOTLOADER_APP_START);
 
-    /*uint8_t data[]  = "12345678AFFEAFFE";
-    app_len = strlen(data);
-
-    app_start = (uint32_t*)data;*/
-    printf("CRC start 0x%X ", *app_start);
-    printf(" 0x%X\n", *(app_start+1));
-    printf("CRC end 0x%X\n", *(app_start+app_len/4-1));
-    printf("CRC over %d bytes\n", app_len);
+    DEBUG_PRINTF("CRC start 0x%X ", *app_start);
+    DEBUG_PRINTF(" 0x%X\n", *(app_start+1));
+    DEBUG_PRINTF("CRC end 0x%X\n", *(app_start+app_len/4-1));
+    DEBUG_PRINTF("CRC over %d bytes\n", app_len);
 
     crc_reset();
     uint32_t expected_crc = crc_calculate_block(app_start, app_len/4);
 
 
-    DEBUG_PRINTF("> got crc 0x%X, expected 0x%X\n", flash_crc, expected_crc);
-    return expected_crc == flash_crc;
+    DEBUG_PRINTF("> got crc 0x%X, expected 0x%X\n", *flash_crc, expected_crc);
+    return expected_crc == *flash_crc;
 }
 
 void bootloader_jump_to_app(void) {
+    // magic page:
+    // [CRC       :  4 bytes]
+    // [SIGNATURE : 16 bytes]
+    // [UNIQUE ID : 12 bytes]
+    // [empty               ]
     if (!bootloader_flash_verify_signature()) {
         // still encrypted! start decryption!
         bootloader_decrypt_flash();
+    }
+
+    if (!bootloader_verify_device_id()) {
+        // invalid device id...
+        DEBUG_PRINTF("> invalid device id...\n");
+        // sleep a bit and return
+        return;
     }
 
     if (bootloader_verify_flash()) {

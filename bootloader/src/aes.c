@@ -425,7 +425,7 @@ void aes_cbc_decrypt(uint8_t* output, uint8_t* input, uint32_t length, const uin
 
     // skip the key expansion if key is passed as 0
     if (0 != key) {
-        aes_key = key;
+        aes_key = (uint8_t *)key;
         aes_key_expansion();
     }
 

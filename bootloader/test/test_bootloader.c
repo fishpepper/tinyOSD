@@ -56,10 +56,18 @@ printf("%02X", *u++);
 void led_on(){}
 
 uint8_t FLASH[DEVICE_FLASH_SIZE*2];
+uint8_t DEVICEID[] = {
+    0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0xAA, 0xBB, 0xCC
+};
+
 
 uint8_t *flash_ptr_u8(uint32_t a){
 	//printf("fetch flash ptr 8 for 0x%X\n", a);
         a = a - DEVICE_FLASH_START;
+        if (a == 0x17FF7A10) {
+		// device id
+		return (uint8_t*)DEVICEID;		
+	}
         if (a >= DEVICE_FLASH_SIZE){
                 printf("ERROR: access out of bounds (size = %X, accessed element = %X\n",DEVICE_FLASH_SIZE,a);
                 exit(1);
@@ -117,8 +125,18 @@ static void printflash(){
         printf("%.2x", FLASH[i]);
         if (i%32 == 31) printf("\n");
     }
-    printf("[APP START]\n");
+    printf("[MAGIC PAGE]\n");
     for(i = BOOTLOADER_SIZE; i < BOOTLOADER_SIZE+20*32; ++i) {
+        printf("%.2x", FLASH[i]);
+        if (i%32 == 31) printf("\n");
+    }
+    printf("...\n");
+    for(i = BOOTLOADER_SIZE + DEVICE_PAGE_SIZE - 20*32; i < BOOTLOADER_SIZE + DEVICE_PAGE_SIZE; ++i) {
+        printf("%.2x", FLASH[i]);
+        if (i%32 == 31) printf("\n");
+    }
+    printf("[APP START]\n");
+    for(i = BOOTLOADER_SIZE + DEVICE_PAGE_SIZE; i < BOOTLOADER_SIZE + DEVICE_PAGE_SIZE + 20*32; ++i) {
         printf("%.2x", FLASH[i]);
         if (i%32 == 31) printf("\n");
     }
