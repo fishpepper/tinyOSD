@@ -64,6 +64,7 @@ STYLECHECK	:= /checkpatch.pl
 STYLECHECKFLAGS	:= --no-tree -f --terse --mailback
 STYLECHECKFILES	:= $(shell find . -name '*.[ch]')
 OPT		:= -Os
+SIZE            := $(PREFIX)-size
 CSTD		?= -std=gnu99
 
 
@@ -176,6 +177,10 @@ $(BIN_DIR)/%.elf $(BIN_DIR)/%.map: $(OBJS) $(LDSCRIPT) bin_dir
 $(OBJECT_DIR)/%.o: $(SOURCE_DIR)/%.c libopencm3 obj_dir 
 	@printf "  CC      $(*).c\n"
 	$(Q)$(CC) $(TGT_CFLAGS) $(CFLAGS) -o $(OBJECT_DIR)/$(*).o -c $(SOURCE_DIR)/$(*).c
+
+size: $(BIN_DIR)/$(TARGET).elf
+	@printf "\n"
+	$(Q)$(SIZE) $(BIN_DIR)/$(TARGET).elf
 
 clean:
 	@#printf "  CLEAN\n"

@@ -17,59 +17,243 @@
     author: fishpepper <AT> gmail.com
 */
 
-#include "main.h"
-#include "config.h"
-#include "serial.h"
-#include "led.h"
-#include "macros.h"
-#include "bootloader.h"
+/*
+    the hex file will be encrypted data
+    this will be stored in flash:
+    BOOTLOADER | ENCRYPTED_DATA | PARAMS:32Byte
 
-#include <libopencm3/stm32/flash.h>
-#include <libopencmsis/core_cm3.h>
+    on boot we will check
+        if PARAMS[ENCRYPTED_SIGNATURE] = 0xDEADF158 -> decrypt flash
+        if PARAMS[CRC_SIGNATURE] = CRC(FLASH) -> boot
+        else stay in bl
+
+ */
+
+
+#include "bootloader.h"
+#include "config.h"
+#include "aes.h"
+
+#ifndef BUILD_TEST
+  #include "main.h"
+  #include "serial.h"
+  #include "macros.h"
+  #include "led.h"
+
+  #include <libopencm3/stm32/flash.h>
+  #include <libopencm3/stm32/crc.h>
+  #include <libopencmsis/core_cm3.h>
+
+#endif  // BUILD_TEST
+
+#ifndef DEBUG_PRINTF
+#define DEBUG_PRINTF(format, ...) {}
+#endif
+
+#include <stdint.h>
+#include <stdbool.h>
+
+static uint8_t bootloader_secret_key[] = {
+    0x60, 0x3d, 0xeb, 0x10, 0x15, 0xca, 0x71, 0xbe,
+    0x2b, 0x73, 0xae, 0xf0, 0x85, 0x7d, 0x77, 0x81,
+    0x1f, 0x35, 0x2c, 0x07, 0x3b, 0x61, 0x08, 0xd7,
+    0x2d, 0x98, 0x10, 0xa3, 0x09, 0x14, 0xdf, 0xf4
+};
+
+static uint8_t bootloader_magic_signature[] = {
+    0xAF, 0xFE, 0xDE, 0xAD, 0xBA, 0xBE, 0x33, 0x44,
+    0x55, 0x66, 0x77, 0x88, 0x99, 0xaa, 0xbb, 0xcc
+};
+
+// initial IV
+static uint8_t bootloader_iv[] = {
+    0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
+    0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F
+};
+
 
 void bootloader_init(void) {
     // disable global interrupts
-    __asm volatile ("cpsid i");
-}
-
-
-void bootloader_jump_to_app(void) {
-    if (bootloader_verify_flash()) {
-        // app is intact thus it is safe to run it!
-        // remap user program vector table to APP start location:
-        // this is necessary for interrupts to work
-        SCB_VTOR = BOOLOADER_APP_START;
-
-        // re-enable global interrupts (global ints are on per default on startup)
-        __asm volatile ("cpsie i");
-
-        // prepare jump pointer to
-        void (*jump_ptr)(void);
-        jump_ptr = (void (*)(void)) (*((uint32_t *) BOOLOADER_APP_START));
-        jump_ptr();
-
-        // this should never be reached
-        while (1) {
-        }
-    } else {
-        // no valid flash signature found, we stay in the bootloader for now!
-    }
+    GLOBAL_INT_DISABLE();
 }
 
 static bool bootloader_valid_address(uint32_t address) {
     // verify if this is within allowed memory bounds:
-    if (address < (BOOLOADER_APP_START)) {
+    if (address < (BOOTLOADER_APP_START)) {
         // inside bootloader space -> invalid!
+        DEBUG_PRINTF("invalid address 0x%X (inside bootloader)\n", address);
         return false;
     }
-    if (address >= (BOOLOADER_APP_END)) {
+    if (address >= (BOOTLOADER_APP_END)) {
         // exceeds flash size -> invalid!
+        DEBUG_PRINTF("invalid address 0x%X (>flash size)\n", address);
         return false;
     }
 
     // safe!
     return true;
 }
+
+static bool bootloader_write_buffer16(uint32_t address, uint16_t *data, uint32_t len) {
+    DEBUG_PRINTF("write flash 0x%X (len = %d) = 0x%X\n", address, len, *data);
+    uint32_t i;
+
+    for (i = 0; i < len; i++) {
+        // verify if this is within allowed memory bounds:
+        if (!bootloader_valid_address(address)) {
+            return false;
+        }
+
+        // execute
+        flash_unlock();
+        flash_program_half_word(address, data[i]);
+        flash_lock();
+
+        // prepare next address:
+        address += 2;  // 2 * 8bit
+    }
+
+    return true;
+}
+
+static void bootloader_decrypt_flash(void) {
+    DEBUG_PRINTF("decrypting flash...\n");
+    // bootloader has written the flash with encrypted data,
+    // decrypt it pagewise
+    uint8_t decrypted_buffer[DEVICE_PAGE_SIZE];
+
+    // init key/iv
+    uint8_t *key_ptr = bootloader_secret_key;
+    uint8_t *iv_ptr  = bootloader_iv;
+
+    uint32_t flash_address = BOOTLOADER_APP_START;
+    bool last_page = false;
+
+    while (flash_address < BOOTLOADER_APP_END) {
+        DEBUG_PRINTF("decrypting 0x%X\n", flash_address);
+
+        // make sure to have a valid address
+        if (!bootloader_valid_address(flash_address)) {
+            return;
+        }
+
+        // fetch pointer to flash
+        uint8_t *flash_ptr = FLASH_U8_PTR(flash_address);
+        uint32_t buffer_len = DEVICE_PAGE_SIZE;
+
+        // decrypt buffer
+        aes_cbc_decrypt(decrypted_buffer, flash_ptr, buffer_len, key_ptr, iv_ptr);
+
+        if (flash_address == (BOOTLOADER_APP_END - DEVICE_PAGE_SIZE)) {
+            // the last 32 bytes store crc and a magic signature
+            // store "sucessfully decrypted" signature:
+            uint8_t *magic_ptr = bootloader_magic_signature;
+            for (uint32_t a = DEVICE_PAGE_SIZE-32; a < DEVICE_PAGE_SIZE-16; a++) {
+                decrypted_buffer[a] = *magic_ptr++;
+            }
+        }
+
+        // clear flash page
+        flash_unlock();
+        flash_erase_page(flash_address);
+        flash_lock();
+
+
+        // write page
+        bootloader_write_buffer16(flash_address, (uint16_t *)decrypted_buffer, DEVICE_PAGE_SIZE/2);
+
+        // next iteration:
+        flash_address += DEVICE_PAGE_SIZE;
+
+        // key/iv will be derived internally
+        key_ptr = 0;
+        iv_ptr = 0;
+    }
+}
+
+static bool bootloader_flash_verify_signature(void) {
+    // check if the flash content is encoded:
+    uint8_t *flash_signature = FLASH_U32_PTR(BOOTLOADER_APP_END - 32);
+    uint8_t *exp_signature   = bootloader_magic_signature;
+
+    // compare:
+    bool valid_signature = true;
+    for(uint32_t i = 0; i < 16; i++) {
+        if ((*flash_signature) != (*exp_signature)) {
+            // do not abort here to make side channel attacks
+            // a bit more complex
+            valid_signature = false;
+        }
+        flash_signature++;
+        exp_signature++;
+    }
+
+    if (!valid_signature) {
+        DEBUG_PRINTF("flash is encrypted\n");
+    } else {
+        DEBUG_PRINTF("flash is decrypted\n");
+    }
+    return valid_signature;
+}
+
+static bool bootloader_verify_flash(void) {
+    // expect a valid crc32 sum on last flash word:
+    uint32_t flash_crc = *FLASH_U32_PTR(BOOTLOADER_APP_END - 4);
+
+    // calc crc over flash content:
+    uint32_t *app_start = FLASH_U32_PTR(BOOTLOADER_APP_START);
+    uint32_t app_len    = BOOTLOADER_APP_END - BOOTLOADER_APP_START - 32;
+
+    /*uint8_t data[]  = "12345678AFFEAFFE";
+    app_len = strlen(data);
+
+    app_start = (uint32_t*)data;*/
+    printf("CRC start 0x%X ", *app_start);
+    printf(" 0x%X\n", *(app_start+1));
+    printf("CRC end 0x%X\n", *(app_start+app_len/4-1));
+    printf("CRC over %d bytes\n", app_len);
+
+    crc_reset();
+    uint32_t expected_crc = crc_calculate_block(app_start, app_len/4);
+
+
+    DEBUG_PRINTF("> got crc 0x%X, expected 0x%X\n", flash_crc, expected_crc);
+    return expected_crc == flash_crc;
+}
+
+void bootloader_jump_to_app(void) {
+    if (!bootloader_flash_verify_signature()) {
+        // still encrypted! start decryption!
+        bootloader_decrypt_flash();
+    }
+
+    if (bootloader_verify_flash()) {
+        // app is intact thus it is safe to run it!
+        // remap user program vector table to APP start location:
+        // this is necessary for interrupts to work
+        RELOCATE_VTABLE(BOOTLOADER_APP_START);
+
+        // re-enable global interrupts (global ints are on per default on startup)
+        GLOBAL_INT_ENABLE();
+
+        // prepare jump pointer to
+#ifndef BUILD_TEST
+        void (*jump_ptr)(void);
+        jump_ptr = (void (*)(void)) (*FLASH_U32_PTR(BOOTLOADER_APP_START));
+        jump_ptr();
+
+        // this should never be reached
+        while (1) {
+        }
+#else
+        DEBUG_PRINTF("YAY! all set, jumnping to app\n");
+#endif  // BUILD_TEST
+
+    } else {
+        // no valid flash signature found, we stay in the bootloader for now!
+    }
+}
+
 
 static bool bootloader_decode_address(uint32_t *address) {
     uint8_t rx;
@@ -104,7 +288,7 @@ static bool bootloader_decode_address(uint32_t *address) {
 }
 
 static bool bootloader_erase_page(uint8_t page) {
-    uint32_t page_address = BOOLOADER_APP_START + page * DEVICE_PAGE_SIZE;
+    uint32_t page_address = BOOTLOADER_APP_START + page * DEVICE_PAGE_SIZE;
 
     // verify if this is within allowed memory bounds:
     if (!bootloader_valid_address(page_address)) {
@@ -118,28 +302,6 @@ static bool bootloader_erase_page(uint8_t page) {
 
     return true;
 }
-
-static bool bootloader_write_buffer16(uint32_t address, uint16_t *data, uint32_t len) {
-    uint32_t i;
-
-    for (i = 0; i < len; i++) {
-        // verify if this is within allowed memory bounds:
-        if (!bootloader_valid_address(address)) {
-            return false;
-        }
-
-        // execute
-        flash_unlock();
-        flash_program_half_word(address, data[i]);
-        flash_lock();
-
-        // prepare next address:
-        address += 2;  // 2 * 8bit
-    }
-
-    return true;
-}
-
 
 void bootloader_main(void) {
     uint8_t buffer[256+2];
@@ -300,7 +462,7 @@ void bootloader_main(void) {
                 data_ptr = buffer;
 #else
                 // set pointer to flash
-                data_ptr = (uint8_t*)address;
+                data_ptr = FLASH_U8_PTR(address);
 #endif  // BOOTLOADER_ALLOW_READ
                 // send len+1 bytes
                 serial_putc(*data_ptr++);
@@ -406,7 +568,7 @@ void bootloader_main(void) {
                         // valid command, mark all pages to be erased
                         len = 0;
                         data_ptr = &buffer[0];
-                        for (i = BOOLOADER_SIZE_PAGES; i < BOOLOADER_FLASH_SIZE_PAGES; i++) {
+                        for (i = BOOTLOADER_SIZE_PAGES; i < BOOTLOADER_FLASH_SIZE_PAGES; i++) {
                             buffer[len] = i;
                             len++;
                         }

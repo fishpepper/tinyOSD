@@ -53,6 +53,7 @@ STYLECHECK	:= /checkpatch.pl
 STYLECHECKFLAGS	:= --no-tree -f --terse --mailback
 STYLECHECKFILES	:= $(shell find . -name '*.[ch]')
 OPT		:= -Os
+SIZE            := $(PREFIX)-size
 CSTD		?= -std=gnu99
 
 
@@ -184,6 +185,10 @@ bin_dir:
 obj_dir:
 	@mkdir -p ${OBJECT_DIR}
 	@mkdir -p ${OBJECT_DIR}/eeprom_emulation
+
+size: $(BIN_DIR)/$(TARGET).elf
+	@printf "\n"
+	$(Q)$(SIZE) $(BIN_DIR)/$(TARGET).elf
 
 ifeq ($(STLINK_PORT),)
 ifeq ($(BMP_PORT),)

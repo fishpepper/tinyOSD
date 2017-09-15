@@ -4,6 +4,14 @@
 #include <libopencm3/stm32/rcc.h>
 #include <libopencm3/stm32/gpio.h>
 
+#define GLOBAL_INT_DISABLE() __asm volatile ("cpsid i")
+#define GLOBAL_INT_ENABLE()  __asm volatile ("cpsie i")
+#define RELOCATE_VTABLE(__a) { SCB_VTOR = __a; }
+
+#define FLASH_U8_PTR(__a) (((uint8_t *)(__a)))
+#define FLASH_U16_PTR(__a) (((uint16_t *)(__a)))
+#define FLASH_U32_PTR(__a) (((uint32_t *)(__a)))
+
 #define GPIO_RCC(GPIO)  (((0x14) << 5) + (17 + ((GPIO - PERIPH_BASE_AHB2)/0x0400)))
 
 #define DEFINE_TO_STR(x) #x

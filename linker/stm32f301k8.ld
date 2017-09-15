@@ -1,8 +1,8 @@
-/* linker script for STM32F051R8T6, 64K flash, 8K RAM) */
+/* linker script for STM32F301K8, 64K flash, 16K RAM) */
 
 /* define memory regions */
 MEMORY { 
-	rom (rx) : ORIGIN = 0x08000000, LENGTH = 64K
+	rom (rx) : ORIGIN = 0x08000000 + 4*2K, LENGTH = 64K-3*2K-8
 	ram (rwx) : ORIGIN = 0x20000000, LENGTH = 16K
 }
 

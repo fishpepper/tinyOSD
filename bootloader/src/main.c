@@ -21,6 +21,7 @@
 #include "delay.h"
 #include "timeout.h"
 #include "led.h"
+#include "aes.h"
 #include "clocksource.h"
 #include "serial.h"
 #include "macros.h"
@@ -42,6 +43,8 @@ int main(void) {
     led_init();
 
     serial_init();
+
+    aes_init();
 
     bootloader_init();
 
