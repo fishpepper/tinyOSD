@@ -10,6 +10,8 @@ generation can be handled in software.
 I selected a STM32F3 due to the availability in small packages and 
 the necessary features I needed and got working. 
 
+https://youtu.be/USWiuCVAzIQ
+
 The result:
 * Fully opensource
 * Very high update rates
