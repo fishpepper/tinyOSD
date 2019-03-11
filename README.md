@@ -10,7 +10,7 @@ generation can be handled in software.
 I selected a STM32F3 due to the availability in small packages and 
 the necessary features I needed and got working. 
 
-https://youtu.be/USWiuCVAzIQ
+[![tinyOSD youtube video](https://img.youtube.com/vi/USWiuCVAzIQ/0.jpg)](https://www.youtube.com/watch?v=USWiuCVAzIQ)
 
 The result:
 * Fully opensource
